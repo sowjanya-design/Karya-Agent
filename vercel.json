@@ -1,0 +1,11 @@
+{
+  "buildCommand": "npx prisma generate && vite build",
+  "outputDirectory": "dist",
+  "env": {
+    "PUPPETEER_SKIP_DOWNLOAD": "true"
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
