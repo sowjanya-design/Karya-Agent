@@ -335,8 +335,8 @@ export default function EmployeeDashboard() {
             K
           </div>
           <div>
-            <h1 className="text-sm font-black text-white uppercase tracking-wider leading-none">Karya Services</h1>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1 block">Consultant Space</span>
+            <h1 className="text-base font-black text-white tracking-tight leading-none font-display">Karya</h1>
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mt-1 block">Consultant Space</span>
           </div>
         </div>
 
@@ -403,8 +403,8 @@ export default function EmployeeDashboard() {
         <main className="flex-1 overflow-y-auto bg-slate-950 p-8 space-y-8 custom-scrollbar">
           
           <div className="space-y-1">
-            <h2 className="text-xl font-black text-white uppercase tracking-tight">System Metrics Overview</h2>
-            <p className="text-xs text-slate-500 uppercase tracking-wider font-mono">Telemetry details for Karya operational network</p>
+            <h2 className="text-2xl font-black text-white tracking-tight">System Metrics Overview</h2>
+            <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">Telemetry details for Karya operational network</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -529,7 +529,7 @@ export default function EmployeeDashboard() {
                           </div>
                           
                           <div className="min-w-0 flex-1">
-                            <h4 className="text-sm font-semibold truncate text-white leading-tight">
+                            <h4 className="text-sm font-bold truncate text-white leading-tight">
                               {candidate.application_data?.firstName} {candidate.application_data?.lastName}
                             </h4>
                             <div className="flex items-center justify-between mt-1 text-[10px] text-slate-400 tracking-wider font-mono">
@@ -565,7 +565,7 @@ export default function EmployeeDashboard() {
                       {appData.firstName?.[0] || 'C'}{appData.lastName?.[0] || 'K'}
                     </div>
                     <div>
-                      <h3 className="text-base font-bold text-white leading-none">
+                      <h3 className="text-lg font-black text-white leading-none">
                         {appData.firstName} {appData.lastName}
                       </h3>
                       <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-500 uppercase tracking-widest font-mono font-bold leading-none">

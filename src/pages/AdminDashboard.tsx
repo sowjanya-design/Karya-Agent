@@ -528,8 +528,8 @@ export default function AdminDashboard() {
             K
           </div>
           <div>
-            <h1 className="text-sm font-black text-white uppercase tracking-wider leading-none">Karya Services</h1>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1 block">Admin Terminal</span>
+            <h1 className="text-base font-black text-white tracking-tight leading-none font-display">Karya</h1>
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mt-1 block">Admin Terminal</span>
           </div>
         </div>
 
@@ -612,8 +612,8 @@ export default function AdminDashboard() {
           
           {/* Header */}
           <div className="space-y-1">
-            <h2 className="text-xl font-black text-white uppercase tracking-tight">System Performance Overview</h2>
-            <p className="text-xs text-slate-500 uppercase tracking-wider font-mono">Operations metrics / Live telemetry data</p>
+            <h2 className="text-2xl font-black text-white tracking-tight">System Performance Overview</h2>
+            <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">Operations metrics / Live telemetry data</p>
           </div>
 
           {/* Cards metrics */}
@@ -817,7 +817,7 @@ export default function AdminDashboard() {
                           </div>
                           
                           <div className="min-w-0 flex-1">
-                            <h4 className="text-sm font-semibold truncate text-white leading-tight">
+                            <h4 className="text-sm font-bold truncate text-white leading-tight">
                               {candidate.application_data?.firstName} {candidate.application_data?.lastName}
                             </h4>
                             <div className="flex items-center justify-between mt-1 text-[10px] text-slate-400 tracking-wider font-mono">
@@ -853,10 +853,10 @@ export default function AdminDashboard() {
                       {appData.firstName?.[0] || 'C'}{appData.lastName?.[0] || 'K'}
                     </div>
                     <div>
-                      <h3 className="text-base font-bold text-white leading-none">
+                      <h3 className="text-lg font-black text-white leading-none">
                         {appData.firstName} {appData.lastName}
                       </h3>
-                      <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-500 uppercase tracking-widest font-mono font-bold leading-none">
+                      <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400 uppercase tracking-widest font-medium leading-none">
                         <span>Profile // {selectedClient.status || 'Active'}</span>
                         <span className="text-slate-700">|</span>
                         <span>Salary Target: {appData.expectedCTC ? `${appData.expectedCTC}` : 'N/A'}</span>

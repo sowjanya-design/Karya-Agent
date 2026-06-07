@@ -124,7 +124,7 @@ export default function ClientDashboard() {
             >
               <Menu className="w-5 h-5 text-slate-600" />
             </button>
-            <h2 className="text-lg font-bold text-slate-800">
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">
               {activeTab === 'tracker' ? 'Application Tracker' : 'My Information'}
             </h2>
           </div>
@@ -211,8 +211,8 @@ function SidebarContent({ activeTab, setActiveTab, clientProfile, userEmail }: a
   return (
     <div className="flex flex-col h-full">
       <div className="mb-10 px-2">
-        <h1 className="text-2xl font-black text-blue-600 tracking-tight">KARYA</h1>
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Operational Tracking</p>
+        <h1 className="text-2xl font-black text-blue-600 tracking-tight font-display">KARYA</h1>
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mt-1">Operational Tracking</p>
       </div>
 
       <nav className="space-y-1 flex-1">
@@ -246,10 +246,10 @@ function SidebarContent({ activeTab, setActiveTab, clientProfile, userEmail }: a
             {clientProfile?.application_data?.firstName?.[0] || userEmail?.[0]}
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-bold text-slate-900 truncate">
+            <p className="text-sm font-bold text-slate-900 truncate">
               {clientProfile?.application_data?.firstName} {clientProfile?.application_data?.lastName}
             </p>
-            <p className="text-[10px] font-medium text-slate-400 truncate uppercase tracking-wider">Candidate</p>
+            <p className="text-[10px] font-semibold text-slate-400 truncate uppercase tracking-wider">Candidate</p>
           </div>
         </div>
       </div>
