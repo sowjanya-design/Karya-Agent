@@ -487,7 +487,7 @@ export default function AdminDashboard() {
 
   if (!isAuthorized) {
     return (
-      <div className="h-screen flex items-center justify-center text-blue-600 font-bold uppercase tracking-widest bg-slate-50 font-sans karya-dashboard-font">
+      <div className="h-screen flex items-center justify-center text-cyan-400 font-bold uppercase tracking-widest bg-slate-950 font-sans karya-dashboard-theme">
         Access Denied
       </div>
     );
@@ -517,7 +517,7 @@ export default function AdminDashboard() {
   const appData = selectedClient?.application_data || {};
 
   return (
-    <div className="h-screen w-screen bg-slate-50 text-slate-900 font-sans karya-dashboard-font karya-light-dashboard overflow-hidden flex">
+    <div className="h-screen w-screen bg-slate-950 text-slate-200 font-sans karya-dashboard-theme overflow-hidden flex">
       
       {/* COLUMN 1: LEFT NAVIGATION (Smallest Width) */}
       <aside className="w-64 bg-slate-950 border-r border-slate-900 flex flex-col shrink-0">
@@ -775,7 +775,7 @@ export default function AdminDashboard() {
                   placeholder="Search name / email..." 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs font-semibold text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-all font-sans"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs font-semibold text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-all font-sans karya-dashboard-theme"
                 />
               </div>
             </div>
