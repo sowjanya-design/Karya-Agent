@@ -71,7 +71,7 @@ export default function ClientDashboard() {
   const isProfileEmpty = !clientProfile?.application_data?.firstName;
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-900 font-sans karya-dashboard-font">
+    <div className="flex h-screen bg-slate-50 text-slate-900 font-sans karya-dashboard-theme">
       {/* Mobile Menu Overlay */}
       <AnimatePresence>
         {isMobileMenuOpen && (
