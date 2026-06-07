@@ -1,0 +1,6 @@
+{
+  "name": "Karya Services",
+  "description": "Karya: A professional job consultancy CRM designed for seamless candidate management and tracking. Features a unified dashboard view for both admin and candidates, emphasizing clarity, efficiency, and elegant design.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

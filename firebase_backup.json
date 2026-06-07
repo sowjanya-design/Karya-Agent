@@ -1,0 +1,188 @@
+{
+  "users": [
+    {
+      "id": "5DQHVYvkAiWJCBkpdxYjKWUVKm72",
+      "createdAt": "2026-06-06T14:56:59.398Z",
+      "isApproved": true,
+      "email": "avinashmurari2@gmail.com",
+      "displayName": "Avinash",
+      "uid": "5DQHVYvkAiWJCBkpdxYjKWUVKm72",
+      "role": "client"
+    },
+    {
+      "id": "BSJA2U7k5XZvRQfVuHZjjoeBdI83",
+      "uid": "BSJA2U7k5XZvRQfVuHZjjoeBdI83",
+      "displayName": "Kbsn",
+      "role": "employee",
+      "createdAt": "2026-06-01T09:35:54.620Z",
+      "email": "kbsn1170@gmail.com",
+      "isApproved": true
+    },
+    {
+      "id": "LOzdBGzyaGN7ZUYaFT41V6KNq1l1",
+      "displayName": "Karya Admin",
+      "uid": "LOzdBGzyaGN7ZUYaFT41V6KNq1l1",
+      "role": "admin",
+      "createdAt": "2026-05-26T14:30:10.636Z",
+      "email": "karya.ai.admin@gmail.com"
+    },
+    {
+      "id": "hOppExDFuDcOphF3q7oA3Q7hAcp2",
+      "uid": "hOppExDFuDcOphF3q7oA3Q7hAcp2",
+      "role": "employee",
+      "createdAt": "2026-06-01T09:10:51.413Z",
+      "email": "mkarthikeya24@gmail.com",
+      "assigned_clients": []
+    },
+    {
+      "id": "m7IjAcJNxtPb7IztdCmi7a9nu9H3",
+      "email": "satyabhargav023@gmail.com",
+      "uid": "m7IjAcJNxtPb7IztdCmi7a9nu9H3",
+      "resumeLink": "https://drive.google.com/file/d/1OqavUl-ThR1TOYV2FrIe0Ig-tC-VXOVr/view?usp=sharing",
+      "createdAt": "2026-05-31T06:51:21.742Z",
+      "status": "pending_approval",
+      "isApproved": true,
+      "approvedAt": "2026-05-31T06:51:55.085Z",
+      "displayName": "Bhargav Naragani",
+      "role": "client",
+      "accessRequestedAt": "2026-05-31T06:51:21.742Z"
+    },
+    {
+      "id": "qGSVxAhNFgTTbAE7EW4h1w1SpOX2",
+      "createdAt": "2026-06-06T14:56:16.421Z",
+      "assigned_clients": [],
+      "email": "avinashmurari3@gmail.com",
+      "uid": "qGSVxAhNFgTTbAE7EW4h1w1SpOX2",
+      "role": "client"
+    },
+    {
+      "id": "vPQFRHAdcvhMmJzKhgxeZ3Xij3J2",
+      "role": "client",
+      "displayName": "Yaswanth Surya Teja Alapati",
+      "uid": "vPQFRHAdcvhMmJzKhgxeZ3Xij3J2",
+      "isApproved": true,
+      "email": "yaswanthalapati17@gmail.com",
+      "createdAt": "2026-06-01T11:01:45.325Z"
+    },
+    {
+      "id": "xRyNcfE8wTbEyw8Gv9YFz2kzlD82",
+      "uid": "xRyNcfE8wTbEyw8Gv9YFz2kzlD82",
+      "role": "client",
+      "createdAt": "2026-06-06T15:10:05.875Z",
+      "email": "bhavyamuvva@gmail.com",
+      "assigned_clients": []
+    }
+  ],
+  "clients": [
+    {
+      "id": "5DQHVYvkAiWJCBkpdxYjKWUVKm72",
+      "updatedAt": "2026-06-06T15:06:12.666Z",
+      "status": "approved",
+      "assigned_employee_id": "",
+      "createdAt": "2026-06-06T14:57:01.339Z"
+    },
+    {
+      "id": "hOppExDFuDcOphF3q7oA3Q7hAcp2",
+      "createdAt": "2026-06-06T15:26:04.471Z",
+      "onboardingSkipped": true,
+      "status": "incomplete",
+      "assigned_employee_id": "default_employee"
+    },
+    {
+      "id": "m7IjAcJNxtPb7IztdCmi7a9nu9H3",
+      "assigned_employee_id": "31604",
+      "status": "active",
+      "updatedAt": "2026-06-06T14:50:14.546Z",
+      "application_data": {
+        "firstName": "Bhargav",
+        "resumeLink": "https://drive.google.com/file/d/1OqavUl-ThR1TOYV2FrIe0Ig-tC-VXOVr/view?usp=sharing",
+        "workAuthorization": "CITIZEN-INDIAN",
+        "linkedinUrl": "",
+        "phone": "9063471411",
+        "expectedSalary": "",
+        "relocationStatus": "open",
+        "targetRoles": [],
+        "githubUrl": "",
+        "location": "Gudivada, AndhraPradesh-521301",
+        "lastName": "Naragani"
+      },
+      "createdAt": "2026-05-31T06:51:24.496Z",
+      "master_resume_storage_url": "https://drive.google.com/file/d/1OqavUl-ThR1TOYV2FrIe0Ig-tC-VXOVr/view?usp=sharing"
+    },
+    {
+      "id": "qGSVxAhNFgTTbAE7EW4h1w1SpOX2",
+      "assigned_employee_id": "default_employee",
+      "status": "incomplete",
+      "createdAt": "2026-06-06T14:56:17.679Z"
+    },
+    {
+      "id": "vPQFRHAdcvhMmJzKhgxeZ3Xij3J2",
+      "createdAt": "2026-06-01T11:01:47.669Z",
+      "onboardingSkipped": true,
+      "assigned_employee_id": "32282",
+      "status": "approved",
+      "application_data": {
+        "firstName": "Yaswanth Surya Teja ",
+        "experience": "3.3",
+        "education": {
+          "year": "2022",
+          "degree": "B.TECH",
+          "college": "B.Tech - ECE, Vishnu Institute of Technology (2018-2022), CGPA: 6.8"
+        },
+        "linkedinUrl": "",
+        "permanentAddress": "Godavari , AP",
+        "lastName": "Alapati",
+        "preferredLocation": "Hyderabad / Chennai / Bangalore",
+        "currentCompany": "TCS",
+        "currentCTC": "5.5",
+        "email": "yaswanthalapati17@gmail.com",
+        "dob": "2001-02-17",
+        "domain": "Java Full Stack / IT Service Management",
+        "workHistory": "",
+        "updatedAt": "2026-06-01T12:09:20.519Z",
+        "phone": "+91 9381556710",
+        "portfolioUrl": "",
+        "skills": "Java, Spring Boot, Spring MVC, Spring Security, REST APIs, Microservices, PEGA CSA/CSSA, React.js, JavaScript, HTML5, CSS3, Bootstrap, TypeScript, MySQL, PostgreSQL, Oracle SQL, Hibernate, JPA, Git, GitHub, Maven, Jenkins, Docker, Postman, IntelliJ IDEA, ServiceNow, Active Directory, SCCM, Agile, Scrum, SDLC, ITIL, SLA Management, Incident Management",
+        "targetRoles": [],
+        "expectedCTC": "10"
+      },
+      "updatedAt": "2026-06-06T14:50:14.545Z"
+    },
+    {
+      "id": "xRyNcfE8wTbEyw8Gv9YFz2kzlD82",
+      "assigned_employee_id": "default_employee",
+      "status": "incomplete",
+      "createdAt": "2026-06-06T15:10:06.875Z"
+    }
+  ],
+  "pre_registrations": [
+    {
+      "id": "asifmohammed69@gmail.com",
+      "displayName": "Asif Mohammed",
+      "generatedPassword": "Karya@4S6Q",
+      "uid": "pre_c629jq5f7",
+      "role": "client",
+      "createdAt": "2026-05-28T08:06:20.807Z",
+      "email": "asifmohammed69@gmail.com"
+    },
+    {
+      "id": "geethnadella@gmail.com",
+      "createdAt": "2026-05-26T16:25:01.403Z",
+      "email": "geethnadella@gmail.com",
+      "generatedPassword": "Karya@DC3L",
+      "displayName": "Geeth Nadella",
+      "uid": "pre_3nuvcdawm",
+      "role": "client"
+    },
+    {
+      "id": "saisidhu09@gmail.com",
+      "role": "client",
+      "uid": "pre_6wlgkfznu",
+      "displayName": "Sai Sidheswar Jasti",
+      "generatedPassword": "Karya@7R5K",
+      "email": "saisidhu09@gmail.com",
+      "createdAt": "2026-05-28T08:00:02.590Z"
+    }
+  ],
+  "resumeHistory": []
+}

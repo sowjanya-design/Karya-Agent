@@ -1,0 +1,73 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String   @id @default(uuid())
+  uid             String   @unique
+  email           String   @unique
+  role            String
+  displayName     String?
+  passwordHash    String?
+  assignedClients String[]
+  isBanned        Boolean  @default(false)
+  isApproved      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+}
+
+model Client {
+  id                      String   @id @default(uuid())
+  uid                     String   @unique
+  assignedEmployeeId      String?
+  status                  String   @default("incomplete")
+  masterResumeStorageUrl  String?
+  applicationData         Json?
+  onboardingSkipped       Boolean  @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  jobs                    ClientJob[]
+}
+
+model ClientJob {
+  id                String   @id @default(uuid())
+  clientId          String
+  company           String
+  role              String
+  status            String
+  appliedDate       String?
+  jobUrl            String?
+  location          String?
+  salary            String?
+  tailoredResumeUrl String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  client            Client   @relation(fields: [clientId], references: [id])
+}
+
+model ResumeHistory {
+  id         String   @id @default(uuid())
+  userId     String
+  resumeText String
+  company    String?
+  role       String?
+  atsScore   Float?
+  jobId      String?
+  createdAt  DateTime @default(now())
+}
+
+model PreRegistration {
+  id                String   @id @default(uuid())
+  email             String   @unique
+  displayName       String?
+  role              String
+  generatedPassword String
+  uid               String?
+  createdAt         DateTime @default(now())
+}

@@ -1,0 +1,1080 @@
+import React, { useState, useEffect } from 'react';
+import { useUserRole, ClientProfile } from '../contexts/UserRoleContext';
+import { 
+  Users, 
+  Loader2, 
+  LogOut,
+  Search,
+  Briefcase,
+  UserCheck,
+  ShieldCheck,
+  ChevronRight,
+  ChevronDown,
+  Activity,
+  Plus,
+  RefreshCcw,
+  Mail,
+  Phone,
+  MapPin,
+  Target,
+  Clock,
+  Sparkles,
+  Send,
+  Zap,
+  Building,
+  GraduationCap,
+  Copy,
+  Check,
+  ExternalLink,
+  Trash2,
+  TrendingUp,
+  History,
+  Database,
+  XCircle
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
+import { cn } from '../lib/utils';
+
+export default function EmployeeDashboard() {
+  const { user, logout } = useUserRole();
+  const [activeView, setActiveView] = useState<'roster' | 'stats'>('roster');
+  const [clients, setClients] = useState<ClientProfile[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Selected Candidate State for Dossier
+  const [selectedClientApps, setSelectedClientApps] = useState<any[]>([]);
+  const [isLoadingApps, setIsLoadingApps] = useState(false);
+  const [dossierTab, setDossierTab] = useState<'details' | 'applications' | 'pipeline'>('details');
+
+  // Overview popup modals
+  const [overviewPopup, setOverviewPopup] = useState<'candidates' | 'pending' | null>(null);
+
+  // Job Application Form State
+  const [entryMode, setEntryMode] = useState<'link' | 'manual'>('link');
+  const [company, setCompany] = useState('');
+  const [role, setRole] = useState('');
+  const [location, setLocation] = useState('');
+  const [salary, setSalary] = useState('');
+  const [jobUrl, setJobUrl] = useState('');
+  const [isParsing, setIsParsing] = useState(false);
+  const [isAddingApp, setIsAddingApp] = useState(false);
+
+  // Access Restriction — any employee or admin role is authorized
+  const isAuthorized = user && (user.role === 'employee' || user.role === 'admin');
+  const isAdmin = user?.role === 'admin';
+
+  const employeeId = (user as any)?.uid || null;
+
+  // 1. Polling for all clients
+  useEffect(() => {
+    if (!user || !isAuthorized) return;
+
+    let isMounted = true;
+    const fetchClients = async () => {
+      try {
+        const token = localStorage.getItem('jwt_token');
+        const res = await fetch('/api/clients', { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const rawClients = await res.json();
+        // Normalize camelCase Prisma fields to snake_case expected by ClientProfile type
+        const allClients = rawClients.map((c: any) => ({
+          ...c,
+          application_data: c.application_data ?? c.applicationData ?? {},
+          assigned_employee_id: c.assigned_employee_id ?? c.assignedEmployeeId ?? '',
+        }));
+
+        if (!isMounted) return;
+        setClients(allClients);
+        setLoading(false);
+
+        // Auto-select first matching client if none selected
+        if (allClients.length > 0 && !selectedClientId) {
+          const matches = allClients.filter((c: any) => {
+            if (!isAdmin && employeeId) {
+              return c.assignedEmployeeId === employeeId && c.status !== 'pending_approval' && c.status;
+            }
+            return c.status !== 'pending_approval' && c.status;
+          });
+          if (matches.length > 0) {
+            setSelectedClientId((matches[0] as any).uid || matches[0].id);
+          } else if (allClients.length > 0) {
+            setSelectedClientId((allClients[0] as any).uid || allClients[0].id);
+          }
+        }
+      } catch (err) {
+        if (isMounted) setLoading(false);
+      }
+    };
+    
+    fetchClients();
+    const interval = setInterval(fetchClients, 15000);
+    return () => { isMounted = false; clearInterval(interval); };
+  }, [user, isAuthorized, selectedClientId]);
+
+  // 2. Polling for Selected Candidate's Job Applications
+  useEffect(() => {
+    if (!selectedClientId) {
+      setSelectedClientApps([]);
+      return;
+    }
+    
+    let isMounted = true;
+    const fetchApps = async () => {
+      if (isMounted) setIsLoadingApps(true);
+      try {
+        const token = localStorage.getItem('jwt_token');
+        const res = await fetch(`/api/jobs/${selectedClientId}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const apps = await res.json();
+        if (isMounted) {
+          setSelectedClientApps(apps.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (isMounted) setIsLoadingApps(false);
+      }
+    };
+    
+    fetchApps();
+    const interval = setInterval(fetchApps, 10000);
+    return () => { isMounted = false; clearInterval(interval); };
+  }, [selectedClientId]);
+
+  if (!isAuthorized) {
+    return (
+      <div className="h-screen bg-slate-50 text-slate-900 flex flex-col items-center justify-center p-10 font-sans karya-dashboard-font border-t-4 border-blue-600">
+        <ShieldCheck className="w-16 h-16 mb-6 text-cyan-400" />
+        <h1 className="text-2xl font-bold mb-2 tracking-tight text-white uppercase">Access Denied</h1>
+        <p className="text-sm text-slate-400 font-medium text-center max-w-sm">
+          Please contact the system administrator to unlock access privileges.
+        </p>
+        <button 
+          onClick={() => logout()}
+          className="mt-8 px-8 py-3 bg-cyan-500 text-slate-950 hover:bg-cyan-400 transition-all rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-cyan-500/10 cursor-pointer"
+        >
+          Sign Out
+        </button>
+      </div>
+    );
+  }
+
+  // Filter candidates list based on search and roles
+  const filteredCandidates = clients.filter(c => {
+    if (!isAdmin && employeeId) {
+      if (c.assigned_employee_id !== employeeId) return false;
+    }
+    const fullName = ((c.application_data?.firstName || "") + " " + (c.application_data?.lastName || "")).toLowerCase();
+    const queryMatch = fullName.includes(searchTerm.toLowerCase()) || c.id.toLowerCase().includes(searchTerm.toLowerCase());
+    return c.status !== 'pending_approval' && c.status && queryMatch;
+  });
+
+  const pendingCount = clients.filter(c => c.status === 'pending_approval' || !c.status).length;
+  const approvedCount = clients.filter(c => c.status === 'approved' || c.status === 'active').length;
+
+  const handleApprove = async (clientId: string) => {
+    try {
+      const token = localStorage.getItem('jwt_token');
+      const res = await fetch(`/api/clients/${clientId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: 'approved' })
+      });
+      if (!res.ok) throw new Error("Approval failed on server");
+      toast.success("Candidate record approved successfully.");
+    } catch (err: any) {
+      toast.error("Approval failed: " + err.message);
+    }
+  };
+
+  // Job scrapers
+  const handleAutoFill = async () => {
+    if (!jobUrl || !jobUrl.startsWith('http')) {
+      toast.error("Please provide a valid job link first.");
+      return;
+    }
+    setIsParsing(true);
+    try {
+      const response = await fetch('/api/scrape-job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: jobUrl })
+      });
+
+      if (!response.ok) {
+        throw new Error("Link scraping failed");
+      }
+      
+      const data = await response.json();
+      if (data.company) setCompany(data.company.toUpperCase());
+      if (data.title) setRole(data.title.toUpperCase());
+      if (data.location) setLocation(data.location.toUpperCase());
+      
+      if (data.company || data.title) {
+        toast.success("Details extracted successfully!");
+      } else {
+        toast.error("Unable to extract. Please enter manually.");
+      }
+    } catch (err) {
+      if (jobUrl.includes('naukri.com')) {
+        try {
+          const path = new URL(jobUrl).pathname;
+          const meat = path.split('job-listings-')[1];
+          if (meat) {
+            const parts = meat.split('-');
+            const bIndex = parts.indexOf('b');
+            if (bIndex !== -1) {
+              setRole(parts.slice(0, bIndex).join(' ').toUpperCase());
+              setCompany(parts[bIndex + 1].toUpperCase());
+              toast.success("Scraped via fallback parser.");
+              setIsParsing(false);
+              return;
+            }
+          }
+        } catch (e) {}
+      }
+      toast.error("Could not auto-fill. Please type manually.");
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const handleCreateApplication = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedClientId || !company || !role) { toast.error("Company and role are required."); return; }
+    setIsAddingApp(true);
+    try {
+      const token = localStorage.getItem('jwt_token');
+      const selectedClient = clients.find(c => (c as any).uid === selectedClientId || c.id === selectedClientId);
+      const clientPrismaId = (selectedClient as any)?.id;
+      if (!clientPrismaId) throw new Error("Client record not found");
+      const res = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          clientId: clientPrismaId,
+          company,
+          role,
+          status: 'Applied',
+          appliedDate: new Date().toISOString().split('T')[0],
+          jobUrl: jobUrl || null,
+          location,
+          salary,
+        })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'Save failed');
+      const saved = await res.json();
+      setSelectedClientApps(prev => [saved, ...prev]);
+      setCompany(''); setRole(''); setLocation(''); setSalary(''); setJobUrl('');
+      toast.success("Application saved successfully!");
+    } catch (err: any) {
+      toast.error("Failed to save: " + err.message);
+    } finally {
+      setIsAddingApp(false);
+    }
+  };
+
+  const updateAppStatus = async (appId: string, status: string) => {
+    try {
+      const token = localStorage.getItem('jwt_token');
+      const res = await fetch(`/api/jobs/${appId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status })
+      });
+      if (!res.ok) throw new Error('Update failed');
+      setSelectedClientApps(prev => prev.map(a => a.id === appId ? { ...a, status } : a));
+      toast.success("Status updated.");
+    } catch (err: any) {
+      toast.error("Failed to update status: " + err.message);
+    }
+  };
+
+  const handleDeleteApplication = async (appId: string) => {
+    if (!confirm("Delete this application record?")) return;
+    try {
+      const token = localStorage.getItem('jwt_token');
+      const res = await fetch(`/api/jobs/${appId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error('Delete failed');
+      setSelectedClientApps(prev => prev.filter(a => a.id !== appId));
+      toast.success("Application removed.");
+    } catch (err: any) {
+      toast.error("Failed to delete: " + err.message);
+    }
+  };
+
+  const deleteClient = async (clientId: string) => {
+    if (!confirm("Are you sure you want to permanently delete this candidate profile?")) return;
+    try {
+      const token = localStorage.getItem('jwt_token');
+      const res = await fetch(`/api/users/${clientId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Delete failed'); }
+      setClients(prev => prev.filter(c => (c as any).uid !== clientId && c.id !== clientId));
+      setSelectedClientId(null);
+      toast.success("Candidate deleted successfully.");
+    } catch (err: any) {
+      toast.error("Delete failed: " + err.message);
+    }
+  };
+
+  const selectedClient = clients.find(c => (c as any).uid === selectedClientId || c.id === selectedClientId);
+  const appData = selectedClient?.application_data || {};
+
+  return (
+    <div className="h-screen w-screen bg-slate-50 text-slate-900 font-sans karya-dashboard-font karya-light-dashboard overflow-hidden flex">
+      
+      {/* COLUMN 1: LEFT NAVIGATION (Smallest Width) */}
+      <aside className="w-64 bg-slate-950 border-r border-slate-900 flex flex-col shrink-0">
+        
+        {/* Brand Logo */}
+        <div className="p-6 border-b border-slate-900 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-black">
+            K
+          </div>
+          <div>
+            <h1 className="text-sm font-black text-white uppercase tracking-wider leading-none">Karya Services</h1>
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1 block">Consultant Space</span>
+          </div>
+        </div>
+
+        {/* Navigation Tabs */}
+        <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto">
+          {[
+            { id: 'stats', label: 'Overview', icon: TrendingUp },
+            { id: 'roster', label: 'Candidate Roster', icon: Users }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveView(tab.id as any);
+                const matches = clients.filter(c => {
+                  if (!isAdmin && employeeId && c.assigned_employee_id !== employeeId) return false;
+                  return c.status !== 'pending_approval' && c.status;
+                });
+                if (matches.length > 0) {
+                  setSelectedClientId(matches[0].id);
+                } else {
+                  setSelectedClientId(null);
+                }
+              }}
+              className={cn(
+                "w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all",
+                activeView === tab.id 
+                  ? 'bg-slate-900 border border-slate-800 text-cyan-400 font-black' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <tab.icon className={cn("w-4 h-4", activeView === tab.id ? "text-cyan-400" : "text-slate-500")} />
+                <span>{tab.label}</span>
+              </div>
+            </button>
+          ))}
+        </nav>
+
+        {/* User Profile Footer */}
+        <div className="p-4 border-t border-slate-900 bg-slate-950/20">
+          <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-900/40 border border-slate-900">
+            <div className="min-w-0">
+              <p className="text-[11px] font-black text-white truncate">{user?.email}</p>
+              <div className="flex items-center gap-2 mt-0.5 leading-none">
+                <span className="text-[9px] text-slate-500 uppercase tracking-widest font-mono">Consultant</span>
+                {employeeId && (
+                  <span className="text-[9px] text-cyan-400 font-bold font-mono">ID: {employeeId}</span>
+                )}
+              </div>
+            </div>
+            <button 
+              onClick={() => logout()}
+              className="p-1.5 hover:bg-red-500/10 text-slate-500 hover:text-red-400 rounded-lg transition-all"
+              title="Log Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* RENDER VIEW 1: STATS OVERVIEW */}
+      {activeView === 'stats' && (
+        <main className="flex-1 overflow-y-auto bg-slate-950 p-8 space-y-8 custom-scrollbar">
+          
+          <div className="space-y-1">
+            <h2 className="text-xl font-black text-white uppercase tracking-tight">System Metrics Overview</h2>
+            <p className="text-xs text-slate-500 uppercase tracking-wider font-mono">Telemetry details for Karya operational network</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <button
+              onClick={() => setOverviewPopup('candidates')}
+              className="p-6 bg-slate-900 border border-slate-800 hover:border-cyan-500/40 rounded-2xl space-y-4 shadow-xl transition-all text-left group cursor-pointer"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Total Candidates Registered</span>
+                <div className="p-2 bg-slate-950 rounded-lg text-cyan-400 group-hover:bg-cyan-500/10 transition-all"><Users className="w-4 h-4" /></div>
+              </div>
+              <p className="text-3xl font-black text-white tracking-tight tabular-nums">{filteredCandidates.length}</p>
+              <span className="text-[10px] font-bold text-cyan-400 font-mono">Click to view assigned candidates</span>
+            </button>
+
+            <button
+              onClick={() => setOverviewPopup('pending')}
+              className={cn(
+                "p-6 bg-slate-900 border rounded-2xl space-y-4 shadow-xl transition-all text-left group cursor-pointer",
+                pendingCount > 0 ? "border-yellow-500/30 hover:border-yellow-400/60 animate-pulse" : "border-slate-800 hover:border-yellow-500/40"
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Pending Approvals</span>
+                <div className="p-2 bg-slate-950 rounded-lg text-yellow-400 group-hover:bg-yellow-500/10 transition-all"><Clock className="w-4 h-4" /></div>
+              </div>
+              <p className="text-3xl font-black text-white tracking-tight tabular-nums">{pendingCount}</p>
+              <span className="text-[10px] font-bold text-yellow-400 font-mono">Click to view awaiting approvals</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="p-8 bg-slate-900 border border-slate-800 rounded-2xl space-y-6">
+              <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-3">
+                <Activity className="w-4 h-4 text-cyan-400" /> System Integrity Status
+              </h3>
+              <div className="space-y-3">
+                 <SystemCheckItem label="Karya Candidate Profile Manager" active />
+                 <SystemCheckItem label="Job Application Pipeline Feed" active />
+                 <SystemCheckItem label="Scrapper Auto-Extraction Service" active />
+              </div>
+            </div>
+
+            <div className="p-8 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col justify-center items-center text-center space-y-6">
+               <div className="w-16 h-16 bg-slate-950 rounded-xl flex items-center justify-center border border-slate-800">
+                 <Briefcase className="w-8 h-8 text-slate-600" />
+               </div>
+               <div className="space-y-1">
+                 <h4 className="text-sm font-black text-white uppercase tracking-wider">Dual Core Dispatch CRM</h4>
+                 <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
+                   Karya integrates scraping capabilities with simple interface forms to optimize candidates pipeline workflows.
+                 </p>
+               </div>
+            </div>
+          </div>
+        </main>
+      )}
+
+      {/* RENDER DUAL VIEWS: ROSTER */}
+      {(activeView === 'roster') && (
+        <div className="flex-1 flex overflow-hidden min-h-0">
+          
+          {/* COLUMN 2: CANDIDATE LIST (Medium Width) */}
+          <aside className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0">
+            
+            <div className="p-6 border-b border-slate-800 bg-slate-900 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-white uppercase tracking-widest">
+                  {activeView === 'roster' ? 'Candidate Profiles' : 'Awaiting Approval'}
+                </span>
+                <span className="text-[10px] bg-cyan-500/10 text-cyan-400 font-bold px-2 py-0.5 rounded-full font-mono">
+                  {filteredCandidates.length}
+                </span>
+              </div>
+
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input 
+                  type="text" 
+                  placeholder="Search candidate name..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs font-semibold text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Candidates Lists */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
+              <AnimatePresence mode="popLayout">
+                {loading ? (
+                  <div className="p-10 flex justify-center">
+                    <Loader2 className="w-5 h-5 animate-spin text-cyan-400" />
+                  </div>
+                ) : filteredCandidates.length === 0 ? (
+                  <div className="text-center p-10 text-slate-500 font-bold uppercase text-[10px] tracking-widest">
+                    No candidates found.
+                  </div>
+                ) : (
+                  filteredCandidates.map(candidate => {
+                    const isSelected = selectedClientId === candidate.id;
+                    return (
+                      <motion.button
+                        key={candidate.id}
+                        layoutId={`candidate-${candidate.id}`}
+                        onClick={() => setSelectedClientId(candidate.id)}
+                        className={cn(
+                          "w-full text-left p-4 rounded-xl transition-all border shrink-0 text-slate-200",
+                          isSelected 
+                            ? "bg-slate-800/80 border-cyan-500 shadow-lg shadow-cyan-500/5 text-white" 
+                            : "bg-slate-900/40 border-slate-800 hover:bg-slate-800/40 hover:border-slate-700"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "w-10 h-10 rounded-xl flex items-center justify-center text-xs font-black border transition-all shrink-0",
+                            isSelected 
+                              ? "bg-cyan-500/20 border-cyan-500 text-cyan-400 font-bold" 
+                              : "bg-slate-950 border-slate-800 text-slate-400"
+                          )}>
+                            {candidate.application_data?.firstName?.[0] || 'C'}{candidate.application_data?.lastName?.[0] || 'K'}
+                          </div>
+                          
+                          <div className="min-w-0 flex-1">
+                            <h4 className="text-sm font-semibold truncate text-white leading-tight">
+                              {candidate.application_data?.firstName} {candidate.application_data?.lastName}
+                            </h4>
+                            <div className="flex items-center justify-between mt-1 text-[10px] text-slate-400 tracking-wider font-mono">
+                              <span className="truncate max-w-[120px]">{candidate.id.slice(0, 10)}</span>
+                              {candidate.assigned_employee_id && (
+                                <span className={cn(
+                                  "font-bold uppercase rounded px-1.5 py-0.5 border",
+                                  isSelected ? "text-cyan-400 bg-cyan-500/10 border-cyan-500/20" : "text-slate-500 bg-slate-950 border-slate-800"
+                                )}>
+                                  ID: {candidate.assigned_employee_id}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </motion.button>
+                    );
+                  })
+                )}
+              </AnimatePresence>
+            </div>
+          </aside>
+
+          {/* COLUMN 3: CANDIDATE DOSSIER (Largest Width) */}
+          <section className="flex-1 overflow-hidden bg-slate-950 flex flex-col">
+            {selectedClient ? (
+              <div className="flex-1 flex flex-col h-full overflow-hidden">
+                
+                {/* Dossier Header */}
+                <div className="p-6 border-b border-slate-900 bg-slate-950 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-black text-lg font-mono">
+                      {appData.firstName?.[0] || 'C'}{appData.lastName?.[0] || 'K'}
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-white leading-none">
+                        {appData.firstName} {appData.lastName}
+                      </h3>
+                      <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-500 uppercase tracking-widest font-mono font-bold leading-none">
+                        <span>Profile // {selectedClient.status || 'Active'}</span>
+                        <span className="text-slate-700">|</span>
+                        <span>Salary Target: {appData.expectedCTC ? `${appData.expectedCTC}` : 'N/A'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* Approve button if pending approvals view */}
+                    {activeView === 'approvals' && (
+                      <button 
+                        onClick={() => handleApprove((selectedClient as any).uid || selectedClient.id)}
+                        className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 outline-none text-slate-950 rounded-xl text-xs font-black uppercase tracking-widest transition-all"
+                      >
+                        Approve Candidate
+                      </button>
+                    )}
+
+                    <button 
+                      onClick={() => deleteClient((selectedClient as any).uid || selectedClient.id)}
+                      className="p-2 bg-slate-900 hover:bg-red-500/20 text-slate-500 hover:text-red-400 border border-slate-800 rounded-xl transition-all"
+                      title="Permanently remove candidate profile"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tabs */}
+                <div className="px-6 border-b border-slate-900 bg-slate-950 shrink-0 flex gap-4">
+                  {[
+                    { id: 'details', label: 'Candidate Profile' },
+                    { id: 'applications', label: 'Job Applications' },
+                    { id: 'pipeline', label: 'Application Pipeline' }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setDossierTab(tab.id as any)}
+                      className={cn(
+                        "py-3.5 px-2 text-xs font-bold border-b-2 tracking-wide transition-all outline-none",
+                        dossierTab === tab.id 
+                          ? "border-cyan-500 text-cyan-400 font-extrabold" 
+                          : "border-transparent text-slate-400 hover:text-slate-200"
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tab content */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950">
+                  <div className="p-8">
+                    <AnimatePresence mode="wait">
+                      
+                      {dossierTab === 'details' && (
+                        <motion.div
+                          key="dossier-tab-details"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0 }}
+                          className="grid grid-cols-1 lg:grid-cols-2 gap-8"
+                        >
+                          {/* Main Info Card */}
+                          <div className="space-y-6">
+                            <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl space-y-6">
+                              <h4 className="text-xs font-black text-white uppercase tracking-widest border-b border-slate-800/80 pb-3">
+                                Candidate Contact
+                              </h4>
+
+                              <div className="space-y-4">
+                                <DetailColumn label="Email Address" value={selectedClient.email || appData.email} icon={<Mail className="w-4 h-4" />} />
+                                <DetailColumn label="Phone Number" value={appData.phone} icon={<Phone className="w-4 h-4" />} />
+                                <DetailColumn label="Preferred Job Location" value={appData.preferredLocation} icon={<MapPin className="w-4 h-4" />} />
+                                <DetailColumn label="Target Job Roles" value={appData.targetRoles?.join(', ')} icon={<Target className="w-4 h-4" />} />
+                              </div>
+                            </div>
+
+                            {/* Skills/Experience Grid (Small metric boxes with white text) */}
+                            <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl space-y-4">
+                              <h4 className="text-xs font-black text-white uppercase tracking-widest border-b border-slate-800/80 pb-3">
+                                Professional Insights
+                              </h4>
+                              
+                              <div className="grid grid-cols-2 gap-4">
+                                <InsightCard label="Total Experience" value={appData.experience || 'N/A'} desc="Industry Experience" />
+                                <InsightCard label="Current Domain" value={appData.domain || 'N/A'} desc="Expertise Sector" />
+                                <InsightCard label="Current Salary" value={appData.currentCTC || 'N/A'} desc="CTC Statistics" />
+                                <InsightCard label="Expected Salary" value={appData.expectedCTC || 'N/A'} desc="Demanded Package" />
+                              </div>
+                            </div>
+
+                            {/* Professional Skills segment */}
+                            <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl space-y-3">
+                              <h4 className="text-xs font-black text-white uppercase tracking-widest border-b border-slate-800/80 pb-3">
+                                core skills & Tech stack
+                              </h4>
+                              <p className="text-xs text-slate-300 leading-relaxed font-mono whitespace-pre-wrap">
+                                {appData.skills || "No specific skillset listed."}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Secondary Dossier Info */}
+                          <div className="space-y-6">
+                            {/* Academic history */}
+                            <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl space-y-4">
+                              <h4 className="text-xs font-black text-white uppercase tracking-widest border-b border-slate-800/80 pb-3 flex items-center gap-2">
+                                <GraduationCap className="w-4 h-4 text-purple-400" /> Education Background
+                              </h4>
+                              <div className="space-y-2">
+                                <p className="text-sm font-bold text-white uppercase tracking-wide leading-snug">
+                                  {appData.education?.degree || 'No Degree Listed'}
+                                </p>
+                                <p className="text-xs text-slate-400 font-mono">
+                                  {appData.education?.college || 'No University/College'}
+                                </p>
+                                <p className="text-[10px] font-black text-cyan-400 uppercase tracking-widest mt-1">
+                                  Class of {appData.education?.year || 'N/A'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Resume / Work history */}
+                            <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl space-y-4">
+                              <h4 className="text-xs font-black text-white uppercase tracking-widest border-b border-slate-800/80 pb-3">
+                                Detailed Work History
+                              </h4>
+                              <div className="text-xs font-mono text-slate-400 leading-relaxed max-h-[350px] overflow-y-auto custom-scrollbar whitespace-pre-wrap p-3 bg-slate-950 rounded-lg border border-slate-800/55">
+                                {appData.workHistory || "No detailed work history provided."}
+                              </div>
+                            </div>
+                          </div>
+
+                        </motion.div>
+                      )}
+
+                      {dossierTab === 'applications' && (
+                        <motion.div
+                          key="dossier-tab-apps"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0 }}
+                          className="grid grid-cols-1 lg:grid-cols-1 gap-8"
+                        >
+                          {/* Create vacancy log form */}
+                          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl space-y-6">
+                            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                              <div>
+                                <h4 className="text-xs font-black text-white uppercase tracking-widest">
+                                  Add Job Application
+                                </h4>
+                                <span className="text-[10px] text-slate-500 uppercase mt-0.5 block">Log new vacancy tracks and auto-fill details</span>
+                              </div>
+
+                              <div className="flex bg-slate-950 border border-slate-800 rounded-xl p-1 shrink-0">
+                                <button
+                                  type="button" onClick={() => setEntryMode('link')}
+                                  className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all", entryMode === 'link' ? "bg-slate-800 text-white" : "text-slate-500 hover:text-slate-400")}
+                                >
+                                  Paste Link
+                                </button>
+                                <button
+                                  type="button" onClick={() => setEntryMode('manual')}
+                                  className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all", entryMode === 'manual' ? "bg-slate-800 text-white" : "text-slate-500 hover:text-slate-400")}
+                                >
+                                  Manual
+                                </button>
+                              </div>
+                            </div>
+
+                            <form onSubmit={handleCreateApplication} className="space-y-4">
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Company Name</label>
+                                  <input 
+                                    type="text" placeholder="E.G. GOOGLE" value={company} onChange={e => setCompany(e.target.value)}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-bold text-white uppercase focus:border-cyan-500 focus:outline-none"
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Job Title / Role</label>
+                                  <input 
+                                    type="text" placeholder="E.G. SOFTWARE ENGINEER" value={role} onChange={e => setRole(e.target.value)}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-bold text-white uppercase focus:border-cyan-500 focus:outline-none"
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Region / Location</label>
+                                  <input 
+                                    type="text" placeholder="E.G. LONDON, UK" value={location} onChange={e => setLocation(e.target.value)}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-bold text-white uppercase focus:border-cyan-500 focus:outline-none"
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Offered Salary</label>
+                                  <input 
+                                    type="text" placeholder="E.G. $140,000" value={salary} onChange={e => setSalary(e.target.value)}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-bold text-white uppercase focus:border-cyan-500 focus:outline-none"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="flex gap-4 items-end">
+                                <div className="flex-1 space-y-1.5">
+                                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Job Link / Source URL</label>
+                                  <div className="relative">
+                                    <input 
+                                      type="url" placeholder="https://external-careers.com/vacancy-job" value={jobUrl} onChange={e => setJobUrl(e.target.value)}
+                                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-4 pr-12 py-2.5 text-xs font-semibold text-white focus:border-cyan-500 focus:outline-none"
+                                    />
+                                    {jobUrl && jobUrl.startsWith('http') && (
+                                      <button
+                                        type="button" onClick={handleAutoFill} disabled={isParsing}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-all"
+                                      >
+                                        {isParsing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                                <button
+                                  type="submit" disabled={isAddingApp}
+                                  className="px-6 py-2.5 bg-cyan-500 hover:bg-cyan-600 outline-none text-slate-950 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center transition-all h-[38px] cursor-pointer disabled:opacity-50"
+                                >
+                                  {isAddingApp ? <Loader2 className="w-4 h-4 animate-spin text-slate-950" /> : <Send className="w-4 h-4" />}
+                                  <span className="ml-2">Save Application</span>
+                                </button>
+                              </div>
+                            </form>
+                          </div>
+
+
+                        </motion.div>
+                      )}
+
+                      {dossierTab === 'pipeline' && (
+                        <motion.div
+                          key="dossier-tab-pipeline"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0 }}
+                          className="space-y-4"
+                        >
+                          <h4 className="text-xs font-black text-white uppercase tracking-widest px-1">
+                            Application Pipeline — {selectedClientApps.length} {selectedClientApps.length === 1 ? 'Application' : 'Applications'}
+                          </h4>
+
+                          {isLoadingApps ? (
+                            <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                              <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
+                              <p className="text-slate-500 uppercase font-bold text-[11px] tracking-widest">Loading applications...</p>
+                            </div>
+                          ) : selectedClientApps.length > 0 ? (
+                            <div className="space-y-3">
+                              {selectedClientApps.map(app => (
+                                <div key={app.id} className="p-5 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between gap-4 shadow-xl">
+                                  <div className="flex-1 min-w-0 grid grid-cols-2 lg:grid-cols-5 gap-6 items-center">
+                                    <div className="lg:col-span-2">
+                                      <h5 className="font-bold text-white uppercase truncate text-sm leading-tight">{app.role}</h5>
+                                      <p className="text-[11px] text-cyan-400 uppercase font-black font-mono mt-1 leading-none">{app.company}</p>
+                                    </div>
+                                    <div>
+                                      <span className="block text-[9px] text-slate-500 uppercase tracking-wider leading-none">Location</span>
+                                      <span className="text-xs font-semibold text-slate-300 block mt-1.5 truncate">{app.location || '—'}</span>
+                                    </div>
+                                    <div>
+                                      <span className="block text-[9px] text-slate-500 uppercase tracking-wider leading-none">Salary</span>
+                                      <span className="text-xs font-semibold text-slate-300 block mt-1.5">{app.salary || '—'}</span>
+                                      <span className="text-[10px] font-mono text-slate-500 block mt-0.5">{app.appliedDate || app.applied_date || ''}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {(app.jobUrl || app.job_url) && (
+                                        <a href={app.jobUrl || app.job_url} target="_blank" rel="noreferrer"
+                                          className="p-1.5 bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-cyan-400 border border-slate-800 rounded-lg transition-all"
+                                          title="Open job posting">
+                                          <ExternalLink className="w-3.5 h-3.5" />
+                                        </a>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-3 border-l border-slate-800 pl-4 shrink-0">
+                                    <div className="relative">
+                                      <select
+                                        value={app.status}
+                                        onChange={e => updateAppStatus(app.id, e.target.value)}
+                                        className={cn(
+                                          "appearance-none bg-slate-950 border border-slate-800 rounded-xl pl-4 pr-9 py-2 text-xs font-black uppercase tracking-wider cursor-pointer outline-none transition-all",
+                                          app.status === 'Selected' ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10' :
+                                          app.status === 'Rejected' ? 'text-red-400 border-red-500/20 bg-red-500/10' :
+                                          app.status === 'Interview' ? 'text-purple-400 border-purple-500/20 bg-purple-500/10' :
+                                          app.status === 'Assessment' ? 'text-yellow-400 border-yellow-500/20 bg-yellow-500/10' :
+                                          'text-slate-300'
+                                        )}
+                                      >
+                                        <option value="Applied" className="bg-slate-900 text-slate-300">Applied</option>
+                                        <option value="Interview" className="bg-slate-900 text-slate-300">Interview</option>
+                                        <option value="Assessment" className="bg-slate-900 text-slate-300">Assessment</option>
+                                        <option value="Selected" className="bg-slate-900 text-slate-300">Selected</option>
+                                        <option value="Rejected" className="bg-slate-900 text-slate-300">Rejected</option>
+                                      </select>
+                                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+                                    </div>
+                                    <button
+                                      onClick={() => handleDeleteApplication(app.id)}
+                                      className="p-2 bg-slate-950 hover:bg-red-500/20 text-slate-500 hover:text-red-400 border border-slate-800 rounded-xl transition-all"
+                                      title="Remove application"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                              <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center">
+                                <Briefcase className="w-8 h-8 text-slate-700" />
+                              </div>
+                              <p className="text-slate-500 uppercase font-bold text-[11px] tracking-widest">No applications logged yet for this candidate.</p>
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+
+                    </AnimatePresence>
+                  </div>
+                </div>
+
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center p-20 text-center space-y-4 bg-slate-950">
+                <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center">
+                  <Database className="w-8 h-8 text-slate-700" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider">No Profile Selected</h3>
+                  <p className="text-xs text-slate-500 max-w-sm mt-1 uppercase tracking-widest font-mono">Select a candidate index from the left roster list</p>
+                </div>
+              </div>
+            )}
+          </section>
+
+        </div>
+      )}
+
+      {/* OVERVIEW POPUPS */}
+      <AnimatePresence>
+        {overviewPopup && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm"
+            onClick={() => setOverviewPopup(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl"
+            >
+              <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-widest">
+                    {overviewPopup === 'candidates' ? 'Assigned Candidates' : 'Pending Approvals'}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-widest font-mono mt-1">
+                    {overviewPopup === 'candidates'
+                      ? `${filteredCandidates.length} candidate${filteredCandidates.length !== 1 ? 's' : ''} assigned to you`
+                      : `${pendingCount} awaiting approval`}
+                  </p>
+                </div>
+                <button onClick={() => setOverviewPopup(null)} className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-xl transition-all">
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-4 max-h-[60vh] overflow-y-auto custom-scrollbar space-y-2">
+                {overviewPopup === 'candidates' && (
+                  filteredCandidates.length === 0 ? (
+                    <p className="text-center py-10 text-slate-500 uppercase text-xs font-bold tracking-widest">No candidates assigned yet.</p>
+                  ) : filteredCandidates.map(c => (
+                    <button
+                      key={(c as any).uid || c.id}
+                      onClick={() => { setSelectedClientId((c as any).uid || c.id); setActiveView('roster'); setOverviewPopup(null); }}
+                      className="w-full flex items-center gap-3 p-4 bg-slate-950 border border-slate-800 hover:border-cyan-500/40 rounded-2xl transition-all text-left group"
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 text-xs font-black shrink-0">
+                        {c.application_data?.firstName?.[0] || '?'}{c.application_data?.lastName?.[0] || ''}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-white truncate group-hover:text-cyan-400 transition-colors">
+                          {c.application_data?.firstName} {c.application_data?.lastName}
+                        </p>
+                        <p className="text-[10px] text-slate-500 font-mono truncate">{(c as any).email || 'No email'}</p>
+                      </div>
+                      <span className={cn("text-[9px] font-black uppercase px-2 py-0.5 rounded border",
+                        c.status === 'active' || c.status === 'approved' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-slate-400 bg-slate-800 border-slate-700'
+                      )}>{c.status || 'Active'}</span>
+                    </button>
+                  ))
+                )}
+                {overviewPopup === 'pending' && (
+                  (() => {
+                    const pending = clients.filter(c => {
+                      if (!isAdmin && employeeId && (c as any).assigned_employee_id !== employeeId) return false;
+                      return c.status === 'pending_approval' || !c.status;
+                    });
+                    return pending.length === 0 ? (
+                      <p className="text-center py-10 text-slate-500 uppercase text-xs font-bold tracking-widest">No pending approvals.</p>
+                    ) : pending.map(c => (
+                      <div key={(c as any).uid || c.id} className="flex items-center gap-3 p-4 bg-slate-950 border border-slate-800 rounded-2xl">
+                        <div className="w-9 h-9 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-400 text-xs font-black shrink-0">
+                          {c.application_data?.firstName?.[0] || '?'}{c.application_data?.lastName?.[0] || ''}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-white truncate">
+                            {c.application_data?.firstName} {c.application_data?.lastName}
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-mono truncate">{(c as any).email || 'No email'}</p>
+                        </div>
+                        <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded border text-yellow-400 bg-yellow-500/10 border-yellow-500/20">Pending</span>
+                      </div>
+                    ));
+                  })()
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+    </div>
+  );
+}
+
+// Helpers components
+function StatBox({ label, value, icon, color, trend, isDanger }: any) {
+  return (
+    <div className={cn(
+      "p-6 bg-slate-900 border rounded-2xl space-y-4 shadow-xl transition-all relative overflow-hidden",
+      isDanger ? "border-red-500/20 animate-pulse bg-red-950/10" : "border-slate-800 hover:border-slate-700"
+    )}>
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">{label}</span>
+        <div className={cn("p-2 bg-slate-950 rounded-lg w-fit", color)}>{icon}</div>
+      </div>
+      <div>
+        <p className="text-3xl font-black text-white tracking-tight tabular-nums">{value}</p>
+        {trend && <span className="text-[10px] font-bold text-cyan-400 mt-2 block font-mono">{trend}</span>}
+      </div>
+    </div>
+  );
+}
+
+function DetailColumn({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5 group">
+      <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block">{label}</span>
+      <div className="p-3 bg-slate-950 border border-slate-800/80 hover:border-cyan-500/30 rounded-xl flex items-center gap-3 transition-colors">
+        <div className="text-slate-500 group-hover:text-cyan-400 transition-colors">{icon}</div>
+        <span className="text-xs font-bold font-mono text-slate-200 truncate flex-1 select-all">{value || 'NOT SPECIFIED'}</span>
+        {value && <CopyLinkBtn value={value} />}
+      </div>
+    </div>
+  );
+}
+
+function InsightCard({ label, value, desc }: { label: string; value: string; desc?: string }) {
+  return (
+    <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-1 hover:border-cyan-500/20 transition-colors">
+      <span className="text-[8px] font-black text-slate-500 uppercase tracking-wider block leading-none">{label}</span>
+      <span className="text-xs font-black text-white uppercase truncate block leading-snug">{value}</span>
+      {desc && <span className="text-[7px] text-slate-600 uppercase font-mono block leading-none mt-1">{desc}</span>}
+    </div>
+  );
+}
+
+function SystemCheckItem({ label, active }: { label: string, active: boolean }) {
+  return (
+    <div className="flex items-center justify-between p-4 bg-slate-950 rounded-xl border border-slate-800/80 hover:border-cyan-500/10 transition-all shadow-sm">
+      <span className="text-[10px] font-black text-slate-300 uppercase tracking-wider">
+        {label}
+      </span>
+      <div className="flex items-center gap-2">
+        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" />
+        <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest font-mono">operational</span>
+      </div>
+    </div>
+  );
+}
+
+function CopyLinkBtn({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!value) return;
+    navigator.clipboard.writeText(value);
+    setCopied(true);
+    toast.success("Copied to clipboard");
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <button 
+      type="button" onClick={handleCopy}
+      className="p-1 px-1.5 rounded bg-slate-900 border border-slate-800/80 hover:border-cyan-500/30 text-slate-500 hover:text-cyan-400 transition-all cursor-pointer"
+    >
+      {copied ? <Check className="w-3 h-3 text-emerald-400 animate-bounce" /> : <Copy className="w-3 h-3" />}
+    </button>
+  );
+}
