@@ -146,7 +146,7 @@ export default function EmployeeDashboard() {
 
   if (!isAuthorized) {
     return (
-      <div className="h-screen bg-slate-50 text-slate-900 flex flex-col items-center justify-center p-10 font-sans karya-dashboard-font border-t-4 border-blue-600">
+      <div className="h-screen bg-slate-950 text-slate-200 flex flex-col items-center justify-center p-10 font-sans karya-dashboard-theme border-t-4 border-cyan-500">
         <ShieldCheck className="w-16 h-16 mb-6 text-cyan-400" />
         <h1 className="text-2xl font-bold mb-2 tracking-tight text-white uppercase">Access Denied</h1>
         <p className="text-sm text-slate-400 font-medium text-center max-w-sm">
@@ -324,7 +324,7 @@ export default function EmployeeDashboard() {
   const appData = selectedClient?.application_data || {};
 
   return (
-    <div className="h-screen w-screen bg-slate-50 text-slate-900 font-sans karya-dashboard-font karya-light-dashboard overflow-hidden flex">
+    <div className="h-screen w-screen bg-slate-950 text-slate-200 font-sans karya-dashboard-theme overflow-hidden flex">
       
       {/* COLUMN 1: LEFT NAVIGATION (Smallest Width) */}
       <aside className="w-64 bg-slate-950 border-r border-slate-900 flex flex-col shrink-0">
