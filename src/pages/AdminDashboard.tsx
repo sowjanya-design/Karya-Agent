@@ -554,18 +554,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Sync & Purge Quick Buttons */}
-        <div className="p-4 border-b border-slate-100 space-y-2">
-          <button
-            onClick={syncExistingAssignments}
-            className="w-full px-4 py-2 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 text-slate-600 text-xs font-semibold rounded-xl transition-all flex items-center gap-2 justify-center"
-            title="Balanced consultant workload allocation"
-          >
-            <User className="w-3.5 h-3.5" />
-            Sync Consultants
-          </button>
-        </div>
-
         {/* Navigation Tabs */}
         <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto">
           {[
