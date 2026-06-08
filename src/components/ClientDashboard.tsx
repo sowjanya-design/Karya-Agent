@@ -220,7 +220,7 @@ function SidebarContent({ activeTab, setActiveTab, clientProfile, userEmail }: a
           onClick={() => setActiveTab('tracker')}
           className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
             activeTab === 'tracker' 
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' 
+              ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-200' 
               : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
           }`}
         >
@@ -231,7 +231,7 @@ function SidebarContent({ activeTab, setActiveTab, clientProfile, userEmail }: a
           onClick={() => setActiveTab('profile')}
           className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
             activeTab === 'profile' 
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' 
+              ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-200' 
               : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
           }`}
         >
