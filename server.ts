@@ -454,16 +454,16 @@ app.post("/api/parse-job-url", async (req: any, res: any) => {
 // Start the local dev/production server only when not running as a Vercel serverless function
 if (!process.env.VERCEL) {
   (async () => {
-    const { createServer: createViteServer } = await import("vite");
     const PORT = parseInt(process.env.PORT || '3000', 10);
 
     if (process.env.NODE_ENV !== "production") {
+      const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
       app.use(vite.middlewares);
     } else {
       const distPath = path.join(process.cwd(), "dist");
       app.use(express.static(distPath));
-      app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
+      app.get("*", (_req, res) => res.sendFile(path.join(distPath, "index.html")));
     }
 
     app.listen(PORT, "0.0.0.0", () => {
