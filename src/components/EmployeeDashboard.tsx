@@ -929,18 +929,18 @@ export default function EmployeeDashboard() {
               onClick={e => e.stopPropagation()}
               className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl"
             >
-              <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+              <div className={`p-6 border-b flex items-center justify-between ${overviewPopup === 'candidates' ? 'bg-indigo-500 border-indigo-400' : 'border-slate-800'}`}>
                 <div>
-                  <h3 className="text-sm font-black text-white uppercase tracking-widest">
+                  <h3 className="text-sm font-black uppercase tracking-widest" style={{ color: '#ffffff' }}>
                     {overviewPopup === 'candidates' ? 'Assigned Candidates' : 'Pending Approvals'}
                   </h3>
-                  <p className="text-[10px] text-slate-500 uppercase tracking-widest font-mono mt-1">
+                  <p className="text-[10px] uppercase tracking-widest font-mono mt-1" style={{ color: overviewPopup === 'candidates' ? 'rgba(255,255,255,0.75)' : undefined }}>
                     {overviewPopup === 'candidates'
                       ? `${filteredCandidates.length} candidate${filteredCandidates.length !== 1 ? 's' : ''} assigned to you`
                       : `${pendingCount} awaiting approval`}
                   </p>
                 </div>
-                <button onClick={() => setOverviewPopup(null)} className="p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-xl transition-all">
+                <button onClick={() => setOverviewPopup(null)} className="p-2 rounded-xl transition-all hover:bg-white/20" style={{ color: overviewPopup === 'candidates' ? 'rgba(255,255,255,0.8)' : undefined }}>
                   <XCircle className="w-5 h-5" />
                 </button>
               </div>
