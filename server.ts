@@ -302,6 +302,9 @@ app.post("/api/users/counselor", authenticateToken, async (req: any, res: any) =
   if (req.user.role !== 'admin') return res.status(403).json({error: "Forbidden"});
   const { email, displayName, password } = req.body;
   try {
+    const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    if (existing) return res.status(400).json({ error: "A user with this email already exists." });
+
     const counselors = await prisma.user.findMany({ where: { role: 'employee' } });
     let maxId = 0;
     for (const c of counselors) {
