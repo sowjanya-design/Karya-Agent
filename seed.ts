@@ -12,13 +12,7 @@ async function main() {
       role: "admin",
       password: "AdminPassword123!"
     },
-    {
-      uid: "admin_secret",
-      email: "karya.secret.admin@gmail.com",
-      displayName: "Secret Admin",
-      role: "admin",
-      password: "SecretPassword123!"
-    },
+    
     {
       uid: "02",
       email: "mkarthikeya24@gmail.com",

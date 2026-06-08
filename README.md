@@ -350,7 +350,7 @@ Admins have full access to all candidates, counselors, job applications, and sys
 | Email | Password |
 |---|---|
 | karya.ai.admin@gmail.com | AdminPassword123! |
-| karya.secret.admin@gmail.com | AdminPassword123! |
+|
 
 ### Counselor Accounts (role: `employee`)
 
