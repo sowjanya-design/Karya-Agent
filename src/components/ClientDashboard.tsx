@@ -87,7 +87,7 @@ export default function ClientDashboard() {
               initial={{ x: -300 }}
               animate={{ x: 0 }}
               exit={{ x: -300 }}
-              className="fixed inset-y-0 left-0 w-72 bg-white z-50 lg:hidden shadow-2xl p-6"
+              className="fixed inset-y-0 left-0 w-64 bg-white z-50 lg:hidden shadow-2xl p-6"
             >
               <SidebarContent 
                 activeTab={activeTab} 
@@ -104,7 +104,7 @@ export default function ClientDashboard() {
       </AnimatePresence>
 
       {/* Desktop Sidebar */}
-      <aside className="w-72 bg-white border-r border-slate-200 hidden lg:flex flex-col p-6 overflow-y-auto">
+      <aside className="w-64 bg-white border-r border-slate-100 hidden lg:flex flex-col p-6 overflow-y-auto">
         <SidebarContent 
           activeTab={activeTab} 
           setActiveTab={setActiveTab} 
@@ -210,9 +210,14 @@ export default function ClientDashboard() {
 function SidebarContent({ activeTab, setActiveTab, clientProfile, userEmail }: any) {
   return (
     <div className="flex flex-col h-full">
-      <div className="mb-10 px-2">
-        <h1 className="text-2xl font-black text-blue-600 tracking-tight font-display">KARYA</h1>
-        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mt-1">Operational Tracking</p>
+      <div className="mb-8 px-2 flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 font-black text-sm shrink-0">
+          K
+        </div>
+        <div>
+          <h1 className="text-xl font-black text-indigo-600 tracking-tight leading-none font-display">KARYA</h1>
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mt-1 block">Operational Tracking</p>
+        </div>
       </div>
 
       <nav className="space-y-1 flex-1">

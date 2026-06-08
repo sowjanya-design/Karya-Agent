@@ -517,27 +517,27 @@ export default function AdminDashboard() {
   const appData = selectedClient?.application_data || {};
 
   return (
-    <div className="h-screen w-screen bg-slate-950 text-slate-200 font-sans karya-dashboard-theme overflow-hidden flex">
-      
+    <div className="h-screen w-screen bg-slate-50 text-slate-900 font-sans karya-dashboard-theme overflow-hidden flex">
+
       {/* COLUMN 1: LEFT NAVIGATION (Smallest Width) */}
-      <aside className="w-64 bg-slate-950 border-r border-slate-900 flex flex-col shrink-0">
-        
+      <aside className="w-64 bg-white border-r border-slate-100 flex flex-col shrink-0">
+
         {/* Brand Logo */}
-        <div className="p-6 border-b border-slate-900 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-black">
+        <div className="p-6 border-b border-slate-100 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 font-black text-sm">
             K
           </div>
           <div>
-            <h1 className="text-base font-black text-indigo-600 tracking-tight leading-none font-display">Karya</h1>
+            <h1 className="text-xl font-black text-indigo-600 tracking-tight leading-none font-display">KARYA</h1>
             <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mt-1 block">Admin Terminal</span>
           </div>
         </div>
 
         {/* Sync & Purge Quick Buttons */}
-        <div className="p-4 border-b border-slate-900 space-y-2">
-          <button 
+        <div className="p-4 border-b border-slate-100 space-y-2">
+          <button
             onClick={syncExistingAssignments}
-            className="w-full px-4 py-2 bg-slate-900 hover:bg-cyan-500/10 hover:text-cyan-400 border border-slate-800 hover:border-cyan-500/30 text-xs font-semibold rounded-xl transition-all flex items-center gap-2 justify-center"
+            className="w-full px-4 py-2 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 text-slate-600 text-xs font-semibold rounded-xl transition-all flex items-center gap-2 justify-center"
             title="Balanced consultant workload allocation"
           >
             <User className="w-3.5 h-3.5" />
@@ -589,10 +589,10 @@ export default function AdminDashboard() {
         </nav>
 
         {/* User Profile Footer */}
-        <div className="p-4 border-t border-slate-900 bg-slate-950/20">
-          <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-900/40 border border-slate-900">
+        <div className="p-4 border-t border-slate-100">
+          <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
             <div className="min-w-0">
-              <p className="text-[11px] font-black text-white truncate">{user?.email}</p>
+              <p className="text-[11px] font-bold text-slate-800 truncate">{user?.email}</p>
               <p className="text-[9px] text-slate-500 uppercase tracking-widest font-mono mt-0.5">Role // Admin</p>
             </div>
             <button 
@@ -608,7 +608,7 @@ export default function AdminDashboard() {
 
       {/* RENDER VIEW 1: GENERAL OVERVIEW */}
       {activeTab === 'overview' && (
-        <main className="flex-1 overflow-y-auto bg-slate-950 p-8 space-y-8 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto bg-slate-50 p-8 space-y-8 custom-scrollbar">
           
           {/* Header */}
           <div className="space-y-1">
@@ -1240,7 +1240,7 @@ export default function AdminDashboard() {
 
       {/* RENDER VIEW: COUNSELORS DATA */}
       {activeTab === 'counselors' && user?.role === 'admin' && (
-        <main className="flex-1 overflow-y-auto bg-slate-950 p-8 space-y-8 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto bg-slate-50 p-8 space-y-8 custom-scrollbar">
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <h2 className="text-xl font-black text-white uppercase tracking-tight">Counselors Data</h2>
