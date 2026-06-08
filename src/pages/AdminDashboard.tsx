@@ -1489,13 +1489,13 @@ export default function AdminDashboard() {
       {/* Approve & Assign Counselor Popup */}
       <AnimatePresence>
         {approvePopupUid && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 8 }}
               transition={{ duration: 0.18 }}
-              className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm p-6 space-y-5"
+              className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm p-6 space-y-5 pointer-events-auto"
             >
               {(() => {
                 const pendingClient: any = clients.find((c: any) => c.uid === approvePopupUid || c.id === approvePopupUid);
