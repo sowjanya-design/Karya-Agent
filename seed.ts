@@ -11,21 +11,6 @@ async function main() {
       displayName: "Karya Admin",
       role: "admin",
       password: "AdminPassword123!"
-    },
-    
-    {
-      uid: "02",
-      email: "mkarthikeya24@gmail.com",
-      displayName: "Karthik",
-      role: "employee",
-      password: "Consultancy@2026"
-    },
-    {
-      uid: "01",
-      email: "kbsn1170@gmail.com",
-      displayName: "Niteesh",
-      role: "employee",
-      password: "Consultancy@2026"
     }
   ];
 

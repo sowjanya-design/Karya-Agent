@@ -7,8 +7,6 @@ async function main() {
   const admins = [
     { uid: 'admin_01', email: 'karya.ai.admin@gmail.com', displayName: 'Karya Admin', password: 'AdminPassword123!' },
     { uid: 'admin_02', email: 'karya.secret.admin@gmail.com', displayName: 'Karya Admin 2', password: 'AdminPassword123!' },
-    { uid: 'admin_03', email: 'mkarthikeya24@gmail.com', displayName: 'Admin MK', password: 'AdminPassword123!' },
-    { uid: 'admin_04', email: 'kbsn1170@gmail.com', displayName: 'Admin KBS', password: 'AdminPassword123!' },
   ];
 
   for (const admin of admins) {
