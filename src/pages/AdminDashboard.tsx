@@ -66,6 +66,10 @@ export default function AdminDashboard() {
   const [selectedClientApps, setSelectedClientApps] = useState<any[]>([]);
   const [dossierTab, setDossierTab] = useState<'details' | 'applications'>('details');
 
+  // Approve + Assign Counselor Popup
+  const [approvePopupUid, setApprovePopupUid] = useState<string | null>(null);
+  const [approvePopupAssignId, setApprovePopupAssignId] = useState('');
+
   // Job Application Form State
   const [entryMode, setEntryMode] = useState<'link' | 'manual'>('link');
   const [company, setCompany] = useState('');
@@ -213,16 +217,19 @@ export default function AdminDashboard() {
     return () => { isMounted = false; clearInterval(interval); };
   }, [selectedClientId]);
 
-  const handleStatusUpdate = async (clientUid: string, status: string) => {
+  const handleStatusUpdate = async (clientUid: string, status: string, forcedAssignId?: string) => {
     try {
       const updateData: any = { status };
 
       if (status === 'active' || status === 'approved') {
-        const client = clients.find(c => (c as any).uid === clientUid || c.id === clientUid);
-        if (!client?.assigned_employee_id && !(client as any)?.assignedEmployeeId) {
-          const assignedId = calculateAssignment();
-          updateData.assignedEmployeeId = assignedId;
-          toast.info(`Candidate assigned to Consultant ${assignedId}`);
+        if (forcedAssignId) {
+          updateData.assignedEmployeeId = forcedAssignId;
+        } else {
+          const client = clients.find(c => (c as any).uid === clientUid || c.id === clientUid);
+          if (!client?.assigned_employee_id && !(client as any)?.assignedEmployeeId) {
+            const assignedId = calculateAssignment();
+            updateData.assignedEmployeeId = assignedId;
+          }
         }
       }
 
@@ -233,8 +240,20 @@ export default function AdminDashboard() {
         body: JSON.stringify(updateData)
       });
       if (!res.ok) throw new Error("Update failed on server");
-      toast.success(`Candidate status updated to ${status}`);
-      setClients(prev => prev.map(c => (c as any).uid === clientUid || c.id === clientUid ? { ...c, status: status as any } : c));
+      toast.success(`Candidate approved${updateData.assignedEmployeeId ? ` — assigned to ${updateData.assignedEmployeeId}` : ''}`);
+      setClients(prev => prev.map((c: any) =>
+        c.uid === clientUid || c.id === clientUid
+          ? { ...c, status: status as any, ...(updateData.assignedEmployeeId ? { assigned_employee_id: updateData.assignedEmployeeId, assignedEmployeeId: updateData.assignedEmployeeId } : {}) }
+          : c
+      ));
+      // Advance to next pending candidate (or clear the dossier panel)
+      if (status === 'approved' || status === 'active') {
+        const remaining = clients.filter((c: any) =>
+          c.uid !== clientUid && c.id !== clientUid &&
+          (c.status === 'pending_approval' || !c.status)
+        );
+        setSelectedClientId(remaining.length > 0 ? ((remaining[0] as any).uid || remaining[0].id) : null);
+      }
     } catch (err: any) {
       toast.error("Update failed: " + err.message);
     }
@@ -788,8 +807,18 @@ export default function AdminDashboard() {
                     <Loader2 className="w-5 h-5 animate-spin text-cyan-400" />
                   </div>
                 ) : filteredCandidates.length === 0 ? (
-                  <div className="text-center p-10 text-slate-500 font-bold uppercase text-[10px] tracking-widest">
-                    No matching candidates.
+                  <div className="flex flex-col items-center justify-center p-10 gap-3 text-center">
+                    {activeTab === 'approvals' ? (
+                      <>
+                        <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center">
+                          <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+                        </div>
+                        <p className="text-slate-700 font-black uppercase text-[10px] tracking-widest">No Pending Approvals</p>
+                        <p className="text-slate-400 text-[10px]">All candidates have been reviewed.</p>
+                      </>
+                    ) : (
+                      <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">No matching candidates.</p>
+                    )}
                   </div>
                 ) : (
                   filteredCandidates.map(candidate => {
@@ -886,9 +915,15 @@ export default function AdminDashboard() {
 
                     {/* Action Approved controls if pending */}
                     {activeTab === 'approvals' && (
-                      <button 
-                        onClick={() => handleStatusUpdate(selectedClient.uid, 'approved')}
-                        className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 outline-none text-slate-950 rounded-xl text-xs font-black uppercase tracking-widest transition-all"
+                      <button
+                        onClick={() => {
+                          setApprovePopupAssignId(
+                            selectedClient.assigned_employee_id || (selectedClient as any).assignedEmployeeId ||
+                            (counselors.length > 0 ? counselors[0].uid : '')
+                          );
+                          setApprovePopupUid((selectedClient as any).uid || selectedClient.id);
+                        }}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all"
                       >
                         Approve Candidate
                       </button>
@@ -1430,6 +1465,74 @@ export default function AdminDashboard() {
                   </form>
                 )}
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Approve & Assign Counselor Popup */}
+      <AnimatePresence>
+        {approvePopupUid && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.18 }}
+              className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm p-6 space-y-5"
+            >
+              {(() => {
+                const pendingClient: any = clients.find((c: any) => c.uid === approvePopupUid || c.id === approvePopupUid);
+                const candidateName = pendingClient?.application_data
+                  ? [pendingClient.application_data.firstName, pendingClient.application_data.lastName].filter(Boolean).join(' ')
+                  : pendingClient?.uid || '';
+                return (
+                  <>
+                    <div>
+                      <h3 className="text-lg font-black text-slate-900 tracking-tight">Assign & Approve</h3>
+                      <p className="text-sm text-slate-500 mt-1">
+                        Approving <span className="font-bold text-slate-800">{candidateName || 'this candidate'}</span>
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block">Assign Counselor</label>
+                      <select
+                        value={approvePopupAssignId}
+                        onChange={(e: any) => setApprovePopupAssignId(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-indigo-400 transition-all"
+                      >
+                        <option value="">— No Assignment —</option>
+                        {counselors.map((c: any) => (
+                          <option key={c.uid} value={c.uid}>{c.uid} — {c.displayName}</option>
+                        ))}
+                      </select>
+                      {counselors.length === 0 && (
+                        <p className="text-[10px] text-amber-500 font-semibold mt-1">No counselors found. Candidate will be approved without assignment.</p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-3 pt-1">
+                      <button
+                        onClick={() => setApprovePopupUid(null)}
+                        className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const uid = approvePopupUid;
+                          setApprovePopupUid(null);
+                          await handleStatusUpdate(uid, 'approved', approvePopupAssignId || undefined);
+                        }}
+                        className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-black tracking-wide transition-all"
+                      >
+                        Approve
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
             </motion.div>
           </div>
         )}
