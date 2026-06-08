@@ -455,7 +455,7 @@ app.post("/api/parse-job-url", async (req: any, res: any) => {
 if (!process.env.VERCEL) {
   (async () => {
     const { createServer: createViteServer } = await import("vite");
-    const PORT = 3000;
+    const PORT = parseInt(process.env.PORT || '3000', 10);
 
     if (process.env.NODE_ENV !== "production") {
       const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
