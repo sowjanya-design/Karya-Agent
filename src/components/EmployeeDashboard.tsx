@@ -335,8 +335,8 @@ export default function EmployeeDashboard() {
             K
           </div>
           <div>
-            <h1 className="text-base font-black text-white tracking-tight leading-none font-display">Karya</h1>
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mt-1 block">Consultant Space</span>
+            <h1 className="text-base font-black text-indigo-600 tracking-tight leading-none font-display">Karya</h1>
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mt-1 block">Consultant Space</span>
           </div>
         </div>
 
@@ -362,13 +362,13 @@ export default function EmployeeDashboard() {
               }}
               className={cn(
                 "w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all",
-                activeView === tab.id 
-                  ? 'bg-slate-900 border border-slate-800 text-cyan-400 font-black' 
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                activeView === tab.id
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black shadow-sm'
+                  : 'text-slate-500 hover:bg-indigo-50 hover:text-indigo-700'
               )}
             >
               <div className="flex items-center gap-3">
-                <tab.icon className={cn("w-4 h-4", activeView === tab.id ? "text-cyan-400" : "text-slate-500")} />
+                <tab.icon className={cn("w-4 h-4", activeView === tab.id ? "text-white" : "text-slate-400")} />
                 <span>{tab.label}</span>
               </div>
             </button>
