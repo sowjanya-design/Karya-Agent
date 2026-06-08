@@ -531,8 +531,10 @@ export default function AdminDashboard() {
     }
   }).map(norm);
 
-  const selectedClient = filteredCandidates.find((c: any) => c.uid === selectedClientId || c.id === selectedClientId)
-    ?? (clients as any[]).map(norm).find((c: any) => c.uid === selectedClientId || c.id === selectedClientId);
+  const selectedClient = activeTab === 'approvals'
+    ? filteredCandidates.find((c: any) => c.uid === selectedClientId || c.id === selectedClientId)
+    : (filteredCandidates.find((c: any) => c.uid === selectedClientId || c.id === selectedClientId)
+        ?? (clients as any[]).map(norm).find((c: any) => c.uid === selectedClientId || c.id === selectedClientId));
   const appData = selectedClient?.application_data || {};
 
   return (
@@ -1258,14 +1260,28 @@ export default function AdminDashboard() {
 
               </div>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center p-20 text-center space-y-4 bg-slate-950">
-                <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center">
-                  <Database className="w-8 h-8 text-slate-700" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-white uppercase tracking-wider">No Profile Selected</h3>
-                  <p className="text-xs text-slate-500 max-w-sm mt-1 uppercase tracking-widest font-mono">Select a candidate index from the left roster list</p>
-                </div>
+              <div className="flex-1 flex flex-col items-center justify-center p-20 text-center space-y-4 bg-slate-50">
+                {activeTab === 'approvals' ? (
+                  <>
+                    <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">No Pending Approvals</h3>
+                      <p className="text-xs text-slate-500 max-w-sm mt-2 uppercase tracking-widest font-mono">All candidates have been reviewed</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center">
+                      <Database className="w-8 h-8 text-slate-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">No Profile Selected</h3>
+                      <p className="text-xs text-slate-500 max-w-sm mt-2 uppercase tracking-widest font-mono">Select a candidate from the left roster list</p>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </section>
