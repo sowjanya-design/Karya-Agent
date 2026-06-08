@@ -7,7 +7,7 @@
     "dev": "vite",
     "dev:server": "tsx server.ts",
     "start": "node server.js",
-    "postinstall": "npm run build:all",
+    "postinstall": "npx prisma generate && npm run build:all",
     "build": "vite build",
     "build:server": "esbuild server.ts --platform=node --format=esm --bundle --packages=external --outfile=server.js",
     "build:all": "npm run build && npm run build:server",

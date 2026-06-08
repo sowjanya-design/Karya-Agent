@@ -60,6 +60,14 @@ export const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// Prevent CDN/proxy from caching API responses
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Surrogate-Control', 'no-store');
+  next();
+});
+
 app.get("/api/health", async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
