@@ -1,8 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800;900&family=Cinzel:wght@400;700;900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&family=Manrope:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800;900&family=Cinzel:wght@400;700;900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Playfair Display", serif;
   --font-serif: "Cormorant Garamond", serif;
   --font-monogram: "Cinzel", serif;
@@ -183,10 +183,10 @@
 
 /* Karya dashboard visual reset: professional SaaS blue/indigo theme. */
 @layer utilities {
-  /* Font: system UI sans-serif — native to each OS */
+  /* Font: IBM Plex Sans — applied to all dashboard elements */
   .karya-dashboard-theme,
   .karya-dashboard-theme * {
-    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif !important;
   }
 
   .karya-dashboard-theme h1,
@@ -195,7 +195,7 @@
   .karya-dashboard-theme h4,
   .karya-dashboard-theme h5,
   .karya-dashboard-theme h6 {
-    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif !important;
     letter-spacing: -0.02em !important;
   }
 
@@ -295,10 +295,10 @@
   }
 }
 
-/* Dashboard: system UI sans-serif font stack */
+/* Dashboard: IBM Plex Sans font stack */
 .karya-dashboard-font,
 .karya-dashboard-font * {
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif !important;
 }
 
 .karya-dashboard-font h1,
@@ -307,7 +307,7 @@
 .karya-dashboard-font h4,
 .karya-dashboard-font h5,
 .karya-dashboard-font h6 {
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif !important;
   letter-spacing: -0.02em;
 }
 
