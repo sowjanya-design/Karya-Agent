@@ -183,10 +183,10 @@
 
 /* Karya dashboard visual reset: professional SaaS blue/indigo theme. */
 @layer utilities {
-  /* Font: Inter — the standard SaaS UI font */
+  /* Font: system UI sans-serif — native to each OS */
   .karya-dashboard-theme,
   .karya-dashboard-theme * {
-    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
   }
 
   .karya-dashboard-theme h1,
@@ -195,7 +195,7 @@
   .karya-dashboard-theme h4,
   .karya-dashboard-theme h5,
   .karya-dashboard-theme h6 {
-    font-family: "Inter", ui-sans-serif, system-ui, sans-serif !important;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
     letter-spacing: -0.02em !important;
   }
 
@@ -295,10 +295,10 @@
   }
 }
 
-/* Dashboard: consistent enterprise font stack */
+/* Dashboard: system UI sans-serif font stack */
 .karya-dashboard-font,
 .karya-dashboard-font * {
-  font-family: "Inter", ui-sans-serif, system-ui, sans-serif !important;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
 }
 
 .karya-dashboard-font h1,
@@ -307,7 +307,7 @@
 .karya-dashboard-font h4,
 .karya-dashboard-font h5,
 .karya-dashboard-font h6 {
-  font-family: "Inter", ui-sans-serif, system-ui, sans-serif !important;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
   letter-spacing: -0.02em;
 }
 
