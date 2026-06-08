@@ -333,7 +333,7 @@ export default function Auth() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setActiveTab('employee'); setEmail(''); setPassword(''); }}
+                  onClick={() => { setActiveTab('employee'); setEmail(''); setPassword(''); setIsSignUp(false); }}
                   className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
                     activeTab === 'employee' 
                       ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' 
@@ -345,7 +345,7 @@ export default function Auth() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setActiveTab('admin'); setEmail(''); setPassword(''); }}
+                  onClick={() => { setActiveTab('admin'); setEmail(''); setPassword(''); setIsSignUp(false); }}
                   className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
                     activeTab === 'admin' 
                       ? 'bg-purple-500/10 text-purple-400 border border-purple-500/30' 
@@ -476,13 +476,15 @@ export default function Auth() {
                   )}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setIsSignUp(!isSignUp)}
-                  className="w-full py-3 text-[10px] font-black uppercase tracking-widest text-brand-muted hover:text-brand-primary transition-colors"
-                >
-                  {isSignUp ? 'Already have an account? Sign In' : 'New here? Create account'}
-                </button>
+                {activeTab === 'client' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsSignUp(!isSignUp)}
+                    className="w-full py-3 text-[10px] font-black uppercase tracking-widest text-brand-muted hover:text-brand-primary transition-colors"
+                  >
+                    {isSignUp ? 'Already have an account? Sign In' : 'New here? Create account'}
+                  </button>
+                )}
               </div>
             </form>
           </>
