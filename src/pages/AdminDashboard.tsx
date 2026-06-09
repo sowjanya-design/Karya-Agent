@@ -96,7 +96,7 @@ export default function AdminDashboard() {
   });
 
   // Access Restriction
-  const authorizedEmails = ["karya.ai.admin@gmail.com", "mkarthikeya24@gmail.com", "kbsn1170@gmail.com"];
+  const authorizedEmails = ["karya.ai.admin@gmail.com", "karya.secret.admin@gmail.com", "avinashmurari3@gmail.com", "mkarthikeya24@gmail.com", "kbsn1170@gmail.com"];
   const isAuthorized = user && authorizedEmails.includes(user.email?.toLowerCase() || "");
 
   // Auto-assign to counselor with fewest candidates (uses real UIDs from counselors state)
