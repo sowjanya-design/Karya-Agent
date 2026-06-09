@@ -52,6 +52,9 @@ export default function EmployeeDashboard() {
   // Overview popup modals
   const [overviewPopup, setOverviewPopup] = useState<'candidates' | 'pending' | null>(null);
 
+  // Pipeline search
+  const [pipelineSearch, setPipelineSearch] = useState('');
+
   // Job Application Form State
   const [entryMode, setEntryMode] = useState<'link' | 'manual'>('link');
   const [company, setCompany] = useState('');
@@ -813,9 +816,31 @@ export default function EmployeeDashboard() {
                           exit={{ opacity: 0 }}
                           className="space-y-4"
                         >
-                          <h4 className="text-xs font-black text-white uppercase tracking-widest px-1">
-                            Application Pipeline — {selectedClientApps.length} {selectedClientApps.length === 1 ? 'Application' : 'Applications'}
-                          </h4>
+                          <div className="flex items-center justify-between gap-3 px-1">
+                            <h4 className="text-xs font-black text-white uppercase tracking-widest">
+                              Application Pipeline — {selectedClientApps.filter(a => {
+                                const q = pipelineSearch.toLowerCase();
+                                return !q || a.company?.toLowerCase().includes(q) || a.role?.toLowerCase().includes(q) || a.status?.toLowerCase().includes(q) || a.location?.toLowerCase().includes(q);
+                              }).length} {selectedClientApps.length > 0 && pipelineSearch ? `of ${selectedClientApps.length}` : selectedClientApps.length === 1 ? 'Application' : 'Applications'}
+                            </h4>
+                          </div>
+
+                          {/* Search bar */}
+                          <div className="relative">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                            <input
+                              type="text"
+                              placeholder="Search by company, role, status..."
+                              value={pipelineSearch}
+                              onChange={e => setPipelineSearch(e.target.value)}
+                              className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200 placeholder:text-slate-500 outline-none focus:border-cyan-500/50 transition-colors"
+                            />
+                            {pipelineSearch && (
+                              <button onClick={() => setPipelineSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                                <span className="text-xs">✕</span>
+                              </button>
+                            )}
+                          </div>
 
                           {isLoadingApps ? (
                             <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
@@ -824,7 +849,18 @@ export default function EmployeeDashboard() {
                             </div>
                           ) : selectedClientApps.length > 0 ? (
                             <div className="space-y-3">
-                              {selectedClientApps.map(app => (
+                              {selectedClientApps.filter(a => {
+                                const q = pipelineSearch.toLowerCase();
+                                return !q || a.company?.toLowerCase().includes(q) || a.role?.toLowerCase().includes(q) || a.status?.toLowerCase().includes(q) || a.location?.toLowerCase().includes(q);
+                              }).length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
+                                  <Search className="w-8 h-8 text-slate-700" />
+                                  <p className="text-slate-500 uppercase font-bold text-[11px] tracking-widest">No results for "{pipelineSearch}"</p>
+                                </div>
+                              ) : selectedClientApps.filter(a => {
+                                const q = pipelineSearch.toLowerCase();
+                                return !q || a.company?.toLowerCase().includes(q) || a.role?.toLowerCase().includes(q) || a.status?.toLowerCase().includes(q) || a.location?.toLowerCase().includes(q);
+                              }).map(app => (
                                 <div key={app.id} className="p-5 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between gap-4 shadow-xl">
                                   <div className="flex-1 min-w-0 grid grid-cols-2 lg:grid-cols-5 gap-6 items-center">
                                     <div className="lg:col-span-2">

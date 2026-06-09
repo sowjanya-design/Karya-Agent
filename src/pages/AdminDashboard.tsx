@@ -35,7 +35,10 @@ import {
   Plus,
   RefreshCcw,
   Check,
-  Copy
+  Copy,
+  BarChart2,
+  Award,
+  Calendar
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -50,7 +53,9 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'roster' | 'approvals'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'roster' | 'approvals' | 'analytics'>('overview');
+  const [analyticsFilter, setAnalyticsFilter] = useState<'day' | 'week' | 'month' | 'all'>('all');
+  const [analyticsSearch, setAnalyticsSearch] = useState('');
   const [globalApps, setGlobalApps] = useState<any[]>([]);
   const [counselors, setCounselors] = useState<any[]>([]);
   const [isCreatingCounselor, setIsCreatingCounselor] = useState(false);
@@ -560,6 +565,7 @@ export default function AdminDashboard() {
             { id: 'overview', label: 'Overview', icon: TrendingUp },
             { id: 'roster', label: 'Candidate Roster', icon: Users },
             { id: 'approvals', label: 'Pending Approvals', icon: ShieldAlert, badge: clients.filter(c => c.status === 'pending_approval' || !c.status).length },
+            { id: 'analytics', label: 'Analytics', icon: BarChart2 },
             ...(user?.role === 'admin' ? [{ id: 'counselors', label: 'Counselors Data', icon: Users }] : [])
           ].map(tab => (
             <button
@@ -1371,9 +1377,196 @@ export default function AdminDashboard() {
                 </tbody>
               </table>
             </div>
+
           </div>
         </main>
       )}
+
+      {/* ── ANALYTICS TAB ─────────────────────────────────────────────── */}
+      {activeTab === 'analytics' && (() => {
+        const now = new Date();
+        const filterFn = (app: any) => {
+          const d = new Date(app.createdAt || app.appliedDate || now);
+          if (analyticsFilter === 'day') return d >= new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          if (analyticsFilter === 'week') { const w = new Date(now); w.setDate(w.getDate() - 7); return d >= w; }
+          if (analyticsFilter === 'month') { const m = new Date(now); m.setDate(m.getDate() - 30); return d >= m; }
+          return true;
+        };
+        const filtered = globalApps.filter(filterFn);
+
+        // per-counselor stats
+        const counselorMap: Record<string, { name: string; email: string; candidates: Set<string>; applied: number; interview: number; selected: number; rejected: number }> = {};
+        for (const c of counselors) {
+          counselorMap[c.uid] = { name: c.displayName || c.email, email: c.email, candidates: new Set(), applied: 0, interview: 0, selected: 0, rejected: 0 };
+        }
+        counselorMap['unassigned'] = { name: 'Unassigned', email: '', candidates: new Set(), applied: 0, interview: 0, selected: 0, rejected: 0 };
+
+        for (const app of filtered) {
+          const cl = (clients as any[]).find(c => (c.uid || c.id) === app.clientId);
+          const cid = cl?.assignedEmployeeId || cl?.assigned_employee_id || 'unassigned';
+          const bucket = counselorMap[cid] || counselorMap['unassigned'];
+          bucket.candidates.add(app.clientId);
+          if (app.status === 'Applied') bucket.applied++;
+          else if (app.status === 'Interview') bucket.interview++;
+          else if (app.status === 'Selected') bucket.selected++;
+          else if (app.status === 'Rejected') bucket.rejected++;
+        }
+
+        // per-candidate stats
+        const candidateRows = (clients as any[])
+          .filter(c => c.status !== 'pending_approval')
+          .map(c => {
+            const uid = c.uid || c.id;
+            const apps = filtered.filter(a => a.clientId === uid);
+            const counselorId = c.assignedEmployeeId || c.assigned_employee_id;
+            const counselor = counselors.find((co: any) => co.uid === counselorId);
+            const appData = c.applicationData || c.application_data || {};
+            const name = `${appData.firstName || ''} ${appData.lastName || ''}`.trim() || c.email || uid;
+            return {
+              uid, name,
+              counselorName: counselor?.displayName || counselor?.email || 'Unassigned',
+              total: apps.length,
+              applied: apps.filter(a => a.status === 'Applied').length,
+              interview: apps.filter(a => a.status === 'Interview').length,
+              selected: apps.filter(a => a.status === 'Selected').length,
+              rejected: apps.filter(a => a.status === 'Rejected').length,
+            };
+          })
+          .filter(r => !analyticsSearch || r.name.toLowerCase().includes(analyticsSearch.toLowerCase()) || r.counselorName.toLowerCase().includes(analyticsSearch.toLowerCase()))
+          .sort((a, b) => b.total - a.total);
+
+        const statBox = (label: string, value: number, color: string) => (
+          <div className={`bg-white rounded-2xl border ${color} p-4 space-y-1`}>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+            <p className="text-3xl font-black text-slate-800">{value}</p>
+          </div>
+        );
+
+        const statusBadge = (status: string, count: number) => {
+          const colors: Record<string, string> = { Applied: 'bg-blue-50 text-blue-600', Interview: 'bg-purple-50 text-purple-600', Selected: 'bg-emerald-50 text-emerald-600', Rejected: 'bg-red-50 text-red-500' };
+          return <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black ${colors[status] || 'bg-slate-100 text-slate-500'}`}>{count}</span>;
+        };
+
+        return (
+          <main className="flex-1 overflow-y-auto bg-slate-50 p-8 space-y-8 custom-scrollbar">
+
+            {/* Header + Time Filter */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-800 tracking-tight">Analytics</h2>
+                <p className="text-xs text-slate-400 font-semibold mt-0.5">{filtered.length} applications · {analyticsFilter === 'day' ? 'Today' : analyticsFilter === 'week' ? 'Last 7 days' : analyticsFilter === 'month' ? 'Last 30 days' : 'All time'}</p>
+              </div>
+              <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1">
+                {(['day', 'week', 'month', 'all'] as const).map(f => (
+                  <button key={f} onClick={() => setAnalyticsFilter(f)}
+                    className={cn('px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all',
+                      analyticsFilter === f ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-indigo-600'
+                    )}>
+                    {f === 'day' ? 'Today' : f === 'week' ? 'Week' : f === 'month' ? 'Month' : 'All'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Summary Stat Boxes */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {statBox('Total Applications', filtered.length, 'border-slate-200')}
+              {statBox('Interviews', filtered.filter(a => a.status === 'Interview').length, 'border-purple-100')}
+              {statBox('Selected', filtered.filter(a => a.status === 'Selected').length, 'border-emerald-100')}
+              {statBox('Active Counselors', Object.values(counselorMap).filter(c => c.candidates.size > 0 && c.name !== 'Unassigned').length, 'border-indigo-100')}
+            </div>
+
+            {/* Counselor-wise Breakdown */}
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="p-5 border-b border-slate-100 flex items-center gap-3">
+                <Award className="w-4 h-4 text-indigo-500" />
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Counselor Performance</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100">
+                      {['Counselor', 'Candidates', 'Applied', 'Interview', 'Selected', 'Rejected'].map(h => (
+                        <th key={h} className="text-left px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(counselorMap).filter(([, v]) => v.candidates.size > 0).map(([cid, v]) => (
+                      <tr key={cid} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3">
+                          <p className="font-bold text-slate-800 text-xs">{v.name}</p>
+                          {v.email && <p className="text-[10px] text-slate-400 font-mono">{v.email}</p>}
+                        </td>
+                        <td className="px-4 py-3 text-xs font-bold text-slate-600">{v.candidates.size}</td>
+                        <td className="px-4 py-3">{statusBadge('Applied', v.applied)}</td>
+                        <td className="px-4 py-3">{statusBadge('Interview', v.interview)}</td>
+                        <td className="px-4 py-3">{statusBadge('Selected', v.selected)}</td>
+                        <td className="px-4 py-3">{statusBadge('Rejected', v.rejected)}</td>
+                      </tr>
+                    ))}
+                    {Object.values(counselorMap).every(v => v.candidates.size === 0) && (
+                      <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400 text-xs font-bold uppercase">No data for this period</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Candidate Roster */}
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-4 h-4 text-indigo-500" />
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Candidate Applications</h3>
+                </div>
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search candidate or counselor..."
+                    value={analyticsSearch}
+                    onChange={e => setAnalyticsSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 placeholder:text-slate-400 outline-none focus:border-indigo-300"
+                  />
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100">
+                      {['Candidate', 'Counselor', 'Total', 'Applied', 'Interview', 'Selected', 'Rejected'].map(h => (
+                        <th key={h} className="text-left px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {candidateRows.map(r => (
+                      <tr key={r.uid} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3">
+                          <p className="font-bold text-slate-800 text-xs">{r.name}</p>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500 font-semibold">{r.counselorName}</td>
+                        <td className="px-4 py-3 text-xs font-black text-slate-700">{r.total}</td>
+                        <td className="px-4 py-3">{statusBadge('Applied', r.applied)}</td>
+                        <td className="px-4 py-3">{statusBadge('Interview', r.interview)}</td>
+                        <td className="px-4 py-3">{statusBadge('Selected', r.selected)}</td>
+                        <td className="px-4 py-3">{statusBadge('Rejected', r.rejected)}</td>
+                      </tr>
+                    ))}
+                    {candidateRows.length === 0 && (
+                      <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-xs font-bold uppercase">
+                        {analyticsSearch ? `No results for "${analyticsSearch}"` : 'No data for this period'}
+                      </td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </main>
+        );
+      })()}
 
       {/* Create Counselor Modal */}
       <AnimatePresence>
