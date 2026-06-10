@@ -221,11 +221,12 @@ app.post("/api/jobs", authenticateToken, async (req: any, res: any) => {
 
 app.get("/api/jobs/:clientId", authenticateToken, async (req: any, res: any) => {
   try {
-    const client = await prisma.client.findUnique({ where: { uid: req.params.clientId } });
-    if (!client) {
-      return res.status(404).json({ error: "Client not found" });
-    }
-    const jobs = await prisma.clientJob.findMany({ where: { clientId: client.id } });
+    const identifier = req.params.clientId;
+    // Support both uid (short user ID) and Prisma id (UUID)
+    let client = await prisma.client.findUnique({ where: { uid: identifier } });
+    if (!client) client = await prisma.client.findUnique({ where: { id: identifier } });
+    if (!client) return res.json([]);
+    const jobs = await prisma.clientJob.findMany({ where: { clientId: client.id }, orderBy: { createdAt: 'desc' } });
     res.json(jobs);
   } catch(err: any) { res.status(500).json({ error: err.message }); }
 });

@@ -123,25 +123,32 @@ export default function EmployeeDashboard() {
       setSelectedClientApps([]);
       return;
     }
-    
+
+    // Clear immediately when switching candidates so stale apps never show
+    setSelectedClientApps([]);
+
     let isMounted = true;
     const fetchApps = async () => {
       if (isMounted) setIsLoadingApps(true);
       try {
         const token = localStorage.getItem('jwt_token');
         const res = await fetch(`/api/jobs/${selectedClientId}`, { headers: { Authorization: `Bearer ${token}` } });
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (isMounted) setSelectedClientApps([]);
+          return;
+        }
         const apps = await res.json();
         if (isMounted) {
           setSelectedClientApps(apps.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
         }
       } catch (err) {
         console.error(err);
+        if (isMounted) setSelectedClientApps([]);
       } finally {
         if (isMounted) setIsLoadingApps(false);
       }
     };
-    
+
     fetchApps();
     const interval = setInterval(fetchApps, 10000);
     return () => { isMounted = false; clearInterval(interval); };
@@ -358,7 +365,7 @@ export default function EmployeeDashboard() {
                   return c.status !== 'pending_approval' && c.status;
                 });
                 if (matches.length > 0) {
-                  setSelectedClientId(matches[0].id);
+                  setSelectedClientId((matches[0] as any).uid || matches[0].id);
                 } else {
                   setSelectedClientId(null);
                 }
@@ -508,12 +515,13 @@ export default function EmployeeDashboard() {
                   </div>
                 ) : (
                   filteredCandidates.map(candidate => {
-                    const isSelected = selectedClientId === candidate.id;
+                    const candidateKey = (candidate as any).uid || candidate.id;
+                    const isSelected = selectedClientId === candidateKey;
                     return (
                       <motion.button
                         key={candidate.id}
                         layoutId={`candidate-${candidate.id}`}
-                        onClick={() => setSelectedClientId(candidate.id)}
+                        onClick={() => setSelectedClientId(candidateKey)}
                         className={cn(
                           "w-full text-left p-4 rounded-xl transition-all border shrink-0 text-slate-200",
                           isSelected 
