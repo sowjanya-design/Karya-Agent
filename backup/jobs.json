@@ -1,0 +1,72 @@
+[
+  {
+    "id": "e1496df5-038b-493e-ad50-8932d91af11f",
+    "clientId": "506b672e-30d3-4ffb-a1eb-c0a9885541d4",
+    "company": "Google",
+    "role": "SAP",
+    "status": "Interview",
+    "appliedDate": "2026-06-09",
+    "jobUrl": null,
+    "location": "hyd",
+    "salary": "7654",
+    "tailoredResumeUrl": null,
+    "createdAt": "2026-06-09T13:43:42.235Z",
+    "updatedAt": "2026-06-09T13:43:49.767Z"
+  },
+  {
+    "id": "cd770bba-5b56-46c9-b0b4-6f98af6dee94",
+    "clientId": "506b672e-30d3-4ffb-a1eb-c0a9885541d4",
+    "company": "HP",
+    "role": "Developer",
+    "status": "Selected",
+    "appliedDate": "2026-06-09",
+    "jobUrl": null,
+    "location": "Hyd",
+    "salary": "987654",
+    "tailoredResumeUrl": null,
+    "createdAt": "2026-06-09T13:43:27.550Z",
+    "updatedAt": "2026-06-09T13:43:53.215Z"
+  },
+  {
+    "id": "edb41335-b357-4957-8595-a297bf06578e",
+    "clientId": "506b672e-30d3-4ffb-a1eb-c0a9885541d4",
+    "company": "CG",
+    "role": "DEveloper",
+    "status": "Rejected",
+    "appliedDate": "2026-06-09",
+    "jobUrl": null,
+    "location": "Hyderabad",
+    "salary": "345678",
+    "tailoredResumeUrl": null,
+    "createdAt": "2026-06-09T13:43:01.490Z",
+    "updatedAt": "2026-06-09T13:43:59.839Z"
+  },
+  {
+    "id": "5a41b9b9-e6c5-4cb6-8d8b-64a6a8074d38",
+    "clientId": "506b672e-30d3-4ffb-a1eb-c0a9885541d4",
+    "company": "HP",
+    "role": "testimg",
+    "status": "Assessment",
+    "appliedDate": "2026-06-09",
+    "jobUrl": null,
+    "location": "hyd",
+    "salary": "678123",
+    "tailoredResumeUrl": null,
+    "createdAt": "2026-06-09T13:44:19.438Z",
+    "updatedAt": "2026-06-09T13:44:34.936Z"
+  },
+  {
+    "id": "3ad7898f-76b7-4c21-ba18-6adee48b3e79",
+    "clientId": "506b672e-30d3-4ffb-a1eb-c0a9885541d4",
+    "company": "test",
+    "role": "eydusj",
+    "status": "Applied",
+    "appliedDate": "2026-06-10",
+    "jobUrl": null,
+    "location": "fcvbn",
+    "salary": "9876",
+    "tailoredResumeUrl": null,
+    "createdAt": "2026-06-10T09:14:13.414Z",
+    "updatedAt": "2026-06-10T09:14:13.414Z"
+  }
+]

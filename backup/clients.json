@@ -1,0 +1,233 @@
+[
+  {
+    "id": "4d8cb4c5-17eb-4390-aefb-71f03519de3e",
+    "uid": "usr_njbclgkcp",
+    "assignedEmployeeId": "05",
+    "status": "approved",
+    "masterResumeStorageUrl": null,
+    "applicationData": {
+      "lastName": "Kumar",
+      "firstName": "Konijeti Deepak Venkata"
+    },
+    "onboardingSkipped": false,
+    "createdAt": "2026-06-09T04:46:14.113Z",
+    "updatedAt": "2026-06-09T05:06:56.846Z"
+  },
+  {
+    "id": "d58a3457-b6bc-4567-8ee5-056573bd2289",
+    "uid": "usr_gkv2j5jvd",
+    "assignedEmployeeId": "06",
+    "status": "approved",
+    "masterResumeStorageUrl": null,
+    "applicationData": {
+      "lastName": "",
+      "firstName": "Geethapriya.Gujjula"
+    },
+    "onboardingSkipped": false,
+    "createdAt": "2026-06-09T05:36:14.598Z",
+    "updatedAt": "2026-06-09T05:44:31.015Z"
+  },
+  {
+    "id": "8ae58d66-7143-4b84-bf31-49df2d23e247",
+    "uid": "usr_1jy31sq4w",
+    "assignedEmployeeId": "05",
+    "status": "approved",
+    "masterResumeStorageUrl": null,
+    "applicationData": {
+      "dob": "",
+      "email": "",
+      "phone": "9491633456",
+      "domain": "SAP Security Analyst",
+      "skills": "",
+      "lastName": "Kikkuru",
+      "education": {
+        "year": "2020",
+        "degree": "B Tech",
+        "college": "VKR, VNB & AGK Engineering college "
+      },
+      "firstName": "Tarun Sai Reddy",
+      "updatedAt": "2026-06-09T12:18:31.766Z",
+      "currentCTC": "425000",
+      "experience": "4 years 9 months",
+      "expectedCTC": "850000",
+      "linkedinUrl": "https://www.linkedin.com/in/kikkuru-tarun-sai-reddy-04a52510a",
+      "targetRoles": [],
+      "workHistory": "",
+      "portfolioUrl": "",
+      "currentCompany": "HCL Tech",
+      "permanentAddress": "Varala Bazar, Eluru road, Gudivada, Krishna district, Andhra Pradesh ",
+      "preferredLocation": "Hyderabad"
+    },
+    "onboardingSkipped": false,
+    "createdAt": "2026-06-09T12:09:11.839Z",
+    "updatedAt": "2026-06-09T12:18:31.828Z"
+  },
+  {
+    "id": "4478a0ee-5a50-494b-94ec-1815f1647f29",
+    "uid": "usr_0g2e2osbm",
+    "assignedEmployeeId": "06",
+    "status": "approved",
+    "masterResumeStorageUrl": null,
+    "applicationData": {
+      "dob": "",
+      "email": "",
+      "phone": "9063471411",
+      "domain": "java ",
+      "skills": "",
+      "lastName": "Naragani",
+      "education": {
+        "year": "",
+        "degree": "",
+        "college": ""
+      },
+      "firstName": "BHARGAV",
+      "updatedAt": "2026-06-08T15:18:00.107Z",
+      "currentCTC": "460000",
+      "experience": "3",
+      "expectedCTC": "1200000",
+      "linkedinUrl": "",
+      "targetRoles": [],
+      "workHistory": "",
+      "portfolioUrl": "",
+      "currentCompany": "No",
+      "permanentAddress": "1/567-2 Ngos Colony , Bantumilli Road , Gudivada, Andhra Pradesh, 521301",
+      "preferredLocation": "hyd , chennai "
+    },
+    "onboardingSkipped": false,
+    "createdAt": "2026-06-08T14:38:13.342Z",
+    "updatedAt": "2026-06-08T15:18:02.833Z"
+  },
+  {
+    "id": "809b3183-3522-47ae-85ee-b642d5756ae6",
+    "uid": "usr_bzjscqe0d",
+    "assignedEmployeeId": "06",
+    "status": "approved",
+    "masterResumeStorageUrl": null,
+    "applicationData": {
+      "dob": "",
+      "email": "",
+      "phone": "8298299619",
+      "domain": "ServiceNow, Devops & Python",
+      "skills": "ServiceNow\n.net\nPython\nDevops with AWS \nGenerative AI \nData structures and Algorithms in python ",
+      "lastName": "Jadala",
+      "education": {
+        "year": "2024",
+        "degree": "Bachelors of Technology ",
+        "college": "CSI Wesley Institute of Technology and Sciences"
+      },
+      "firstName": "Varun Sai",
+      "updatedAt": "2026-06-09T12:27:28.539Z",
+      "currentCTC": "2,83,000",
+      "experience": "2 YEARS",
+      "expectedCTC": "6,00,000",
+      "linkedinUrl": "https://www.linkedin.com/in/varun-sai-jadala-12972626b?utm_source=share_via&utm_content=profile&utm_medium=member_android",
+      "targetRoles": [],
+      "workHistory": "Technically driven Associate at Wipro delivering production-ready cloud and Generative AI solutions. Proven expertise in architecting AWS DevOps pipelines, building optimized Python backends with advanced data structures, and bridging complex logic with enterprise .NET architectures. Adept at integrating AI-driven workflows into platforms like ServiceNow to automate processes, streamline operations, and deliver measurable business impact.",
+      "portfolioUrl": "",
+      "currentCompany": "WIPRO ",
+      "permanentAddress": "H.no 5-68-155/275 SY Nagar , Bolligudem ,  Boduppal , Hyderabad - 500092",
+      "preferredLocation": "Hyderabad, Remote "
+    },
+    "onboardingSkipped": false,
+    "createdAt": "2026-06-08T15:13:31.545Z",
+    "updatedAt": "2026-06-09T12:27:29.348Z"
+  },
+  {
+    "id": "950701bd-a11e-4716-af5e-f983a46f17d6",
+    "uid": "usr_w2rk08xit",
+    "assignedEmployeeId": "07",
+    "status": "approved",
+    "masterResumeStorageUrl": null,
+    "applicationData": {
+      "lastName": "",
+      "firstName": "Vennela"
+    },
+    "onboardingSkipped": false,
+    "createdAt": "2026-06-09T13:54:57.591Z",
+    "updatedAt": "2026-06-09T13:59:40.548Z"
+  },
+  {
+    "id": "506b672e-30d3-4ffb-a1eb-c0a9885541d4",
+    "uid": "usr_e0bvj5r7p",
+    "assignedEmployeeId": "07",
+    "status": "approved",
+    "masterResumeStorageUrl": null,
+    "applicationData": {
+      "lastName": "",
+      "firstName": "Sowjanya"
+    },
+    "onboardingSkipped": false,
+    "createdAt": "2026-06-09T13:41:44.238Z",
+    "updatedAt": "2026-06-09T14:00:38.059Z"
+  },
+  {
+    "id": "6bcad9b2-7bf1-4009-be9c-359409dbd087",
+    "uid": "usr_qt8ya5x6k",
+    "assignedEmployeeId": "07",
+    "status": "approved",
+    "masterResumeStorageUrl": null,
+    "applicationData": {
+      "dob": "",
+      "email": "",
+      "phone": "7036616653",
+      "domain": "ServiceNow, DevOps & Python",
+      "skills": "ServiceNow \n.net\nPython\nDevops with AWS\nGenerative AI\nData Structures and Algorithms in python",
+      "lastName": "Abhinethri",
+      "education": {
+        "year": "2024",
+        "degree": "Bachelor's of Technology",
+        "college": "CSI Wesley Institute of Technology and Sciences"
+      },
+      "firstName": "Sheripalli",
+      "updatedAt": "2026-06-09T14:08:44.486Z",
+      "currentCTC": "2,52,000",
+      "experience": "2 YEARS",
+      "expectedCTC": "6,00,000",
+      "linkedinUrl": "https://www.linkedin.com/in/sheripalli-abhinethri-169273288?utm_source=share_via&utm_content=profile&utm_medium=member_android",
+      "targetRoles": [],
+      "workHistory": "Strategic Cloud & AI Operations Engineer at Wipro, leveraging Real-Time Queue Management (RTQM) and advanced backend architecture to drive enterprise automation. Proven expertise in transforming manual IT operations into automated, AI-driven workflows by integrating Generative AI and Python algorithms into ServiceNow. Skilled in designing AWS DevOps pipelines and robust .NET enterprise architectures to preemptively route traffic, eliminate SLA breaches, and ensure high-availability system performance",
+      "portfolioUrl": "",
+      "currentCompany": "WIPRO",
+      "permanentAddress": "52 SRT, Prakash Nagar, Begumpet, Hyderabad, Telangana, 500016",
+      "preferredLocation": "Hyderabad, Remote"
+    },
+    "onboardingSkipped": false,
+    "createdAt": "2026-06-08T14:24:59.067Z",
+    "updatedAt": "2026-06-09T14:08:44.618Z"
+  },
+  {
+    "id": "ba7763d2-6a65-4950-9e53-cd3963e26c27",
+    "uid": "usr_cqjwyd6b6",
+    "assignedEmployeeId": "07",
+    "status": "approved",
+    "masterResumeStorageUrl": null,
+    "applicationData": {
+      "dob": "",
+      "email": "",
+      "phone": "9951699027",
+      "domain": "",
+      "skills": "",
+      "lastName": "cheekati",
+      "education": {
+        "year": "2021",
+        "degree": "BTECH",
+        "college": "VKR, VNB & AGK COLLEGE OF ENGINEERING "
+      },
+      "firstName": "Lakshmi Prasanna",
+      "updatedAt": "2026-06-09T14:11:57.724Z",
+      "currentCTC": "",
+      "experience": "",
+      "expectedCTC": "",
+      "linkedinUrl": "",
+      "targetRoles": [],
+      "workHistory": "",
+      "portfolioUrl": "",
+      "currentCompany": "",
+      "permanentAddress": "Plot no 1425,old mig,bhel",
+      "preferredLocation": "Hyderabad "
+    },
+    "onboardingSkipped": false,
+    "createdAt": "2026-06-09T13:02:11.170Z",
+    "updatedAt": "2026-06-09T14:11:58.283Z"
+  }
+]
