@@ -16,7 +16,9 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env.DATABASE_URL } },
+});
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
 
 const FIXED_EMAILS = [
@@ -73,9 +75,16 @@ app.get("/api/health", async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ status: "ok", db: "connected", timestamp: new Date().toISOString() });
-  } catch (e) {
-    res.status(500).json({ status: "error", db: "disconnected" });
+  } catch (e: any) {
+    res.status(500).json({ status: "error", db: "disconnected", detail: e?.message?.slice(0, 120) });
   }
+});
+
+app.get("/api/debug/env", (req, res) => {
+  res.json({
+    DATABASE_URL: process.env.DATABASE_URL ? `set (${process.env.DATABASE_URL.slice(0, 40)}...)` : 'NOT SET',
+    NODE_ENV: process.env.NODE_ENV,
+  });
 });
 
 // --- AUTHENTICATION ROUTES ---
