@@ -8,8 +8,7 @@ import puppeteer from "puppeteer";
 import * as cheerio from "cheerio";
 import { PrismaClient } from "@prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
-import { neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
+import { Pool, neonConfig } from "@neondatabase/serverless";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import cors from "cors";
@@ -19,8 +18,14 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Use WebSocket for Neon in Node.js environment to prevent TCP timer panics
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const ws = require("ws");
 neonConfig.webSocketConstructor = ws;
-const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL });
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaNeon(pool);
 const prisma = new PrismaClient({ adapter } as any);
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
 
