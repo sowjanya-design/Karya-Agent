@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useUserRole } from '../../contexts/UserRoleContext';
-import { 
-  CheckCircle2, 
-  Loader2, 
+import {
+  CheckCircle2,
+  Loader2,
   User,
   Phone,
   MapPin,
@@ -16,7 +16,11 @@ import {
   Save,
   Clock,
   GraduationCap,
-  Building
+  Building,
+  Mail,
+  CreditCard,
+  Calendar,
+  Lock
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -30,7 +34,9 @@ export const ProfileTab: React.FC = () => {
     lastName: clientProfile?.application_data?.lastName || '',
     dob: clientProfile?.application_data?.dob || '',
     phone: clientProfile?.application_data?.phone || '',
-    email: clientProfile?.application_data?.email || '',
+    email: clientProfile?.application_data?.email || user?.email || '',
+    panNumber: clientProfile?.application_data?.panNumber || '',
+    aadharNumber: clientProfile?.application_data?.aadharNumber || '',
     permanentAddress: clientProfile?.application_data?.permanentAddress || '',
     preferredLocation: clientProfile?.application_data?.preferredLocation || '',
     domain: clientProfile?.application_data?.domain || '',
@@ -39,6 +45,7 @@ export const ProfileTab: React.FC = () => {
     currentCTC: clientProfile?.application_data?.currentCTC || '',
     expectedCTC: clientProfile?.application_data?.expectedCTC || '',
     linkedinUrl: clientProfile?.application_data?.linkedinUrl || '',
+    naukriUrl: clientProfile?.application_data?.naukriUrl || '',
     portfolioUrl: clientProfile?.application_data?.portfolioUrl || '',
     skills: clientProfile?.application_data?.skills || '',
     workHistory: clientProfile?.application_data?.workHistory || '',
@@ -78,6 +85,8 @@ export const ProfileTab: React.FC = () => {
         dob: formData.dob,
         phone: formData.phone,
         email: formData.email,
+        panNumber: formData.panNumber,
+        aadharNumber: formData.aadharNumber,
         permanentAddress: formData.permanentAddress,
         preferredLocation: formData.preferredLocation,
         domain: formData.domain,
@@ -86,6 +95,7 @@ export const ProfileTab: React.FC = () => {
         currentCTC: formData.currentCTC,
         expectedCTC: formData.expectedCTC,
         linkedinUrl: formData.linkedinUrl,
+        naukriUrl: formData.naukriUrl,
         portfolioUrl: formData.portfolioUrl,
         skills: formData.skills,
         workHistory: formData.workHistory,
@@ -138,7 +148,7 @@ export const ProfileTab: React.FC = () => {
                 <label className="text-[12px] font-medium text-gray-500 flex items-center gap-2">
                   <User className="w-3 h-3" /> First Name
                 </label>
-                <input 
+                <input
                   type="text" name="firstName" value={formData.firstName} onChange={handleInputChange}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 transition-all"
                 />
@@ -147,8 +157,17 @@ export const ProfileTab: React.FC = () => {
                 <label className="text-[12px] font-medium text-gray-500 flex items-center gap-2">
                   <User className="w-3 h-3" /> Last Name
                 </label>
-                <input 
+                <input
                   type="text" name="lastName" value={formData.lastName} onChange={handleInputChange}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 transition-all"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[12px] font-medium text-gray-500 flex items-center gap-2">
+                  <Calendar className="w-3 h-3" /> Date of Birth
+                </label>
+                <input
+                  type="date" name="dob" value={formData.dob} onChange={handleInputChange}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 transition-all"
                 />
               </div>
@@ -156,8 +175,42 @@ export const ProfileTab: React.FC = () => {
                 <label className="text-[12px] font-medium text-gray-500 flex items-center gap-2">
                   <Phone className="w-3 h-3" /> Phone Number
                 </label>
-                <input 
+                <input
                   type="tel" name="phone" value={formData.phone} onChange={handleInputChange}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 transition-all"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[12px] font-medium text-gray-500 flex items-center gap-2">
+                  <Mail className="w-3 h-3" /> Email Address
+                  <span className="ml-1 inline-flex items-center gap-1 text-[10px] text-amber-500 font-semibold">
+                    <Lock className="w-2.5 h-2.5" /> Updated by counsellor
+                  </span>
+                </label>
+                <input
+                  type="email" name="email" value={formData.email} readOnly
+                  className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 text-sm text-gray-400 cursor-not-allowed"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[12px] font-medium text-gray-500 flex items-center gap-2">
+                  <CreditCard className="w-3 h-3" /> PAN Number
+                </label>
+                <input
+                  type="text" name="panNumber" value={formData.panNumber} onChange={handleInputChange}
+                  placeholder="E.G. ABCDE1234F"
+                  maxLength={10}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 transition-all uppercase"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[12px] font-medium text-gray-500 flex items-center gap-2">
+                  <CreditCard className="w-3 h-3" /> Aadhar Number
+                </label>
+                <input
+                  type="text" name="aadharNumber" value={formData.aadharNumber} onChange={handleInputChange}
+                  placeholder="XXXX XXXX XXXX"
+                  maxLength={14}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 transition-all"
                 />
               </div>
@@ -165,7 +218,7 @@ export const ProfileTab: React.FC = () => {
                 <label className="text-[12px] font-medium text-gray-500 flex items-center gap-2">
                   <MapPin className="w-3 h-3" /> Permanent Address
                 </label>
-                <input 
+                <input
                   type="text" name="permanentAddress" value={formData.permanentAddress} onChange={handleInputChange}
                   placeholder="Street, City, State, Country"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 transition-all font-bold"
@@ -175,7 +228,7 @@ export const ProfileTab: React.FC = () => {
                 <label className="text-[12px] font-medium text-gray-500 flex items-center gap-2">
                   <MapPin className="w-3 h-3" /> Preferred Job Location
                 </label>
-                <input 
+                <input
                   type="text" name="preferredLocation" value={formData.preferredLocation} onChange={handleInputChange}
                   placeholder="E.G. NEW YORK, REMOTE"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 transition-all font-bold"
@@ -184,7 +237,7 @@ export const ProfileTab: React.FC = () => {
             </div>
           </section>
 
-          {/* New Sections */}
+          {/* Professional Links */}
           <section className="space-y-6">
             <h4 className="text-label text-gray-400 border-b border-slate-100 pb-3">Professional Links</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -192,8 +245,19 @@ export const ProfileTab: React.FC = () => {
                 <label className="text-[12px] font-medium text-gray-500 flex items-center gap-2">
                   <Link2 className="w-3 h-3" /> LinkedIn Profile
                 </label>
-                <input 
+                <input
                   type="url" name="linkedinUrl" value={formData.linkedinUrl} onChange={handleInputChange}
+                  placeholder="https://linkedin.com/in/yourprofile"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 transition-all"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[12px] font-medium text-gray-500 flex items-center gap-2">
+                  <Link2 className="w-3 h-3" /> Naukri Profile URL
+                </label>
+                <input
+                  type="url" name="naukriUrl" value={formData.naukriUrl} onChange={handleInputChange}
+                  placeholder="https://naukri.com/profile/yourname"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 transition-all"
                 />
               </div>
@@ -201,8 +265,9 @@ export const ProfileTab: React.FC = () => {
                 <label className="text-[12px] font-medium text-gray-500 flex items-center gap-2">
                   <Link2 className="w-3 h-3" /> Portfolio / GitHub
                 </label>
-                <input 
+                <input
                   type="url" name="portfolioUrl" value={formData.portfolioUrl} onChange={handleInputChange}
+                  placeholder="https://github.com/yourusername"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 transition-all"
                 />
               </div>

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useUserRole, ClientProfile } from '../contexts/UserRoleContext';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Users, 
-  ShieldAlert, 
-  Loader2, 
-  CheckCircle2, 
+import {
+  Users,
+  ShieldAlert,
+  Loader2,
+  CheckCircle2,
   XCircle,
   Database,
   Search,
@@ -38,7 +38,9 @@ import {
   Copy,
   BarChart2,
   Award,
-  Calendar
+  Calendar,
+  CalendarDays,
+  CalendarRange
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -53,7 +55,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'roster' | 'approvals' | 'analytics'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'roster' | 'approvals' | 'analytics' | 'interviews'>('overview');
+  const [interviewsFilter, setInterviewsFilter] = useState<'day' | 'week' | 'month'>('week');
   const [analyticsFilter, setAnalyticsFilter] = useState<'day' | 'week' | 'month' | 'all'>('all');
   const [analyticsSearch, setAnalyticsSearch] = useState('');
   const [globalApps, setGlobalApps] = useState<any[]>([]);
@@ -155,7 +158,9 @@ export default function AdminDashboard() {
           const cStats = { applied: 0, interviews: 0, selected: 0 };
 
           trackersSnap.forEach((data: any) => {
-            const app = { ...data, clientName: `${client.applicationData?.firstName} ${client.applicationData?.lastName}`, clientId: cid };
+            const appData = client.application_data || client.applicationData || {};
+            const clientName = `${appData.firstName || ''} ${appData.lastName || ''}`.trim() || client.email || cid;
+            const app = { ...data, clientName, clientId: cid };
             allApps.push(app);
 
             if (data.status === 'Applied') { applied++; cStats.applied++; }
@@ -565,6 +570,7 @@ export default function AdminDashboard() {
             { id: 'overview', label: 'Overview', icon: TrendingUp },
             { id: 'roster', label: 'Candidate Roster', icon: Users },
             { id: 'approvals', label: 'Pending Approvals', icon: ShieldAlert, badge: clients.filter(c => c.status === 'pending_approval' || !c.status).length },
+            { id: 'interviews', label: 'Interviews', icon: CalendarDays, badge: globalApps.filter(a => a.status === 'Interview').length },
             { id: 'analytics', label: 'Analytics', icon: BarChart2 },
             ...(user?.role === 'admin' ? [{ id: 'counselors', label: 'Counselors Data', icon: Users }] : [])
           ].map(tab => (
@@ -739,9 +745,11 @@ export default function AdminDashboard() {
                         <td className="px-6 py-4 text-right">
                           <span className={cn(
                             "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border",
-                            app.status === 'Selected' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' :
-                            app.status === 'Rejected' ? 'text-red-400 bg-red-500/10 border-red-500/20' :
-                            app.status === 'Interview' ? 'text-purple-400 bg-purple-500/10 border-purple-500/20' :
+                            app.status === 'Applied'    ? 'text-blue-400 bg-blue-500/10 border-blue-500/20' :
+                            app.status === 'Interview'  ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' :
+                            app.status === 'Assessment' ? 'text-purple-400 bg-purple-500/10 border-purple-500/20' :
+                            app.status === 'Selected'   ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' :
+                            app.status === 'Rejected'   ? 'text-red-400 bg-red-500/10 border-red-500/20' :
                             'text-slate-400 bg-slate-800 border-slate-700'
                           )}>
                             {app.status}
@@ -1163,12 +1171,42 @@ export default function AdminDashboard() {
 
                             <div className="space-y-3">
                               {selectedClientApps.map(app => (
-                                <div 
-                                  key={app.id} 
-                                  className="p-5 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between gap-4 shadow-xl text-sm"
+                                <div
+                                  key={app.id}
+                                  className={cn(
+                                    "p-5 border rounded-xl flex items-center justify-between gap-4 shadow-xl text-sm",
+                                    app.status === 'Applied'    ? 'bg-slate-900 border-blue-500/30' :
+                                    app.status === 'Interview'  ? 'bg-slate-900 border-amber-500/30' :
+                                    app.status === 'Assessment' ? 'bg-slate-900 border-purple-500/30' :
+                                    app.status === 'Selected'   ? 'bg-slate-900 border-emerald-500/30' :
+                                    app.status === 'Rejected'   ? 'bg-slate-900 border-red-500/30' :
+                                    'bg-slate-900 border-slate-800'
+                                  )}
                                 >
                                   <div className="flex-1 min-w-0 grid grid-cols-2 lg:grid-cols-4 gap-6">
                                     <div>
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className={cn(
+                                          "inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border",
+                                          app.status === 'Applied'    ? 'text-blue-400 bg-blue-500/10 border-blue-500/30' :
+                                          app.status === 'Interview'  ? 'text-amber-400 bg-amber-500/10 border-amber-500/30' :
+                                          app.status === 'Assessment' ? 'text-purple-400 bg-purple-500/10 border-purple-500/30' :
+                                          app.status === 'Selected'   ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' :
+                                          app.status === 'Rejected'   ? 'text-red-400 bg-red-500/10 border-red-500/30' :
+                                          'text-slate-400 bg-slate-800 border-slate-700'
+                                        )}>
+                                          <span className={cn(
+                                            "w-1.5 h-1.5 rounded-full mr-1.5",
+                                            app.status === 'Applied'    ? 'bg-blue-400' :
+                                            app.status === 'Interview'  ? 'bg-amber-400' :
+                                            app.status === 'Assessment' ? 'bg-purple-400' :
+                                            app.status === 'Selected'   ? 'bg-emerald-400' :
+                                            app.status === 'Rejected'   ? 'bg-red-400' :
+                                            'bg-slate-500'
+                                          )} />
+                                          {app.status}
+                                        </span>
+                                      </div>
                                       <h5 className="font-bold text-white uppercase truncate text-sm leading-tight">{app.role}</h5>
                                       <p className="text-[10px] text-slate-500 uppercase font-mono mt-1 leading-none">{app.company}</p>
                                     </div>
@@ -1211,9 +1249,11 @@ export default function AdminDashboard() {
                                         onChange={(e) => updateAppStatus(app.id, e.target.value)}
                                         className={cn(
                                           "appearance-none bg-slate-950 border border-slate-800 rounded-xl pl-4 pr-9 py-2 text-xs font-black uppercase tracking-wider cursor-pointer outline-none transition-all",
-                                          app.status === 'Selected' ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10' :
-                                          app.status === 'Rejected' ? 'text-red-400 border-red-500/20 bg-red-500/10' :
-                                          app.status === 'Interview' ? 'text-purple-400 border-purple-500/20 bg-purple-500/10' :
+                                          app.status === 'Applied'    ? 'text-blue-400 border-blue-500/20 bg-blue-500/10' :
+                                          app.status === 'Interview'  ? 'text-amber-400 border-amber-500/20 bg-amber-500/10' :
+                                          app.status === 'Assessment' ? 'text-purple-400 border-purple-500/20 bg-purple-500/10' :
+                                          app.status === 'Selected'   ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10' :
+                                          app.status === 'Rejected'   ? 'text-red-400 border-red-500/20 bg-red-500/10' :
                                           'text-slate-300'
                                         )}
                                       >
@@ -1382,6 +1422,124 @@ export default function AdminDashboard() {
         </main>
       )}
 
+      {/* ── INTERVIEWS TAB ─────────────────────────────────────────────── */}
+      {activeTab === 'interviews' && (() => {
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const weekStart = new Date(now); weekStart.setDate(weekStart.getDate() - 7);
+        const monthStart = new Date(now); monthStart.setDate(monthStart.getDate() - 30);
+
+        const interviewApps = globalApps.filter(a => a.status === 'Interview');
+
+        const filterDate = interviewsFilter === 'day' ? todayStart : interviewsFilter === 'week' ? weekStart : monthStart;
+        const filteredInterviews = interviewApps.filter(a => {
+          const d = new Date(a.updatedAt || a.createdAt || now);
+          return d >= filterDate;
+        });
+
+        // Group by date
+        const grouped: Record<string, any[]> = {};
+        filteredInterviews.forEach(app => {
+          const dateKey = new Date(app.updatedAt || app.createdAt || now).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+          if (!grouped[dateKey]) grouped[dateKey] = [];
+          grouped[dateKey].push(app);
+        });
+
+        return (
+          <main className="flex-1 overflow-y-auto bg-slate-50 p-8 space-y-8 custom-scrollbar">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-800 tracking-tight">Interviews</h2>
+                <p className="text-xs text-slate-400 font-semibold mt-0.5">
+                  {filteredInterviews.length} interview{filteredInterviews.length !== 1 ? 's' : ''} · {interviewsFilter === 'day' ? 'Today' : interviewsFilter === 'week' ? 'Last 7 days' : 'Last 30 days'}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1">
+                {(['day', 'week', 'month'] as const).map(f => (
+                  <button key={f} onClick={() => setInterviewsFilter(f)}
+                    className={cn('px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all',
+                      interviewsFilter === f ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-indigo-600'
+                    )}>
+                    {f === 'day' ? 'Today' : f === 'week' ? 'Week' : 'Month'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Summary cards */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-white rounded-2xl border border-purple-100 p-4 space-y-1">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Interviews</p>
+                <p className="text-3xl font-black text-slate-800">{interviewApps.length}</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-indigo-100 p-4 space-y-1">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">In This Period</p>
+                <p className="text-3xl font-black text-slate-800">{filteredInterviews.length}</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-cyan-100 p-4 space-y-1">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Today</p>
+                <p className="text-3xl font-black text-slate-800">
+                  {interviewApps.filter(a => new Date(a.updatedAt || a.createdAt || now) >= todayStart).length}
+                </p>
+              </div>
+            </div>
+
+            {/* Day-grouped interview list */}
+            {Object.keys(grouped).length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center">
+                <CalendarDays className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">No interviews in this period</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {Object.entries(grouped).map(([date, apps]) => (
+                  <div key={date} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                    <div className="px-6 py-4 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CalendarDays className="w-4 h-4 text-indigo-500" />
+                        <h3 className="text-sm font-black text-indigo-800">{date}</h3>
+                      </div>
+                      <span className="text-xs font-black text-indigo-500 bg-indigo-100 px-2 py-0.5 rounded-full">{apps.length}</span>
+                    </div>
+                    <div className="divide-y divide-slate-50">
+                      {apps.map(app => (
+                        <div key={app.id} className="px-6 py-4 flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-4 flex-1 min-w-0">
+                            <div className="w-9 h-9 rounded-lg bg-purple-50 border border-purple-100 flex items-center justify-center shrink-0">
+                              <Briefcase className="w-4 h-4 text-purple-500" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-800 text-sm truncate">{app.role}</p>
+                              <p className="text-xs text-slate-500 font-mono truncate">{app.company} · {app.clientName || 'Unknown Candidate'}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            {app.location && (
+                              <span className="text-xs text-slate-400 hidden sm:block">{app.location}</span>
+                            )}
+                            <select
+                              value={app.status}
+                              onChange={(e) => updateAppStatus(app.id, e.target.value)}
+                              className="appearance-none bg-purple-50 border border-purple-200 text-purple-700 rounded-xl pl-3 pr-8 py-1.5 text-xs font-black uppercase tracking-wider cursor-pointer outline-none"
+                            >
+                              <option value="Applied">Applied</option>
+                              <option value="Interview">Interview</option>
+                              <option value="Assessment">Assessment</option>
+                              <option value="Selected">Selected</option>
+                              <option value="Rejected">Rejected</option>
+                            </select>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </main>
+        );
+      })()}
+
       {/* ── ANALYTICS TAB ─────────────────────────────────────────────── */}
       {activeTab === 'analytics' && (() => {
         const now = new Date();
@@ -1395,11 +1553,11 @@ export default function AdminDashboard() {
         const filtered = globalApps.filter(filterFn);
 
         // per-counselor stats
-        const counselorMap: Record<string, { name: string; email: string; candidates: Set<string>; applied: number; interview: number; selected: number; rejected: number }> = {};
+        const counselorMap: Record<string, { name: string; email: string; candidates: Set<string>; applied: number; interview: number; assessment: number; selected: number; rejected: number }> = {};
         for (const c of counselors) {
-          counselorMap[c.uid] = { name: c.displayName || c.email, email: c.email, candidates: new Set(), applied: 0, interview: 0, selected: 0, rejected: 0 };
+          counselorMap[c.uid] = { name: c.displayName || c.email, email: c.email, candidates: new Set(), applied: 0, interview: 0, assessment: 0, selected: 0, rejected: 0 };
         }
-        counselorMap['unassigned'] = { name: 'Unassigned', email: '', candidates: new Set(), applied: 0, interview: 0, selected: 0, rejected: 0 };
+        counselorMap['unassigned'] = { name: 'Unassigned', email: '', candidates: new Set(), applied: 0, interview: 0, assessment: 0, selected: 0, rejected: 0 };
 
         for (const app of filtered) {
           const cl = (clients as any[]).find(c => (c.uid || c.id) === app.clientId);
@@ -1408,6 +1566,7 @@ export default function AdminDashboard() {
           bucket.candidates.add(app.clientId);
           if (app.status === 'Applied') bucket.applied++;
           else if (app.status === 'Interview') bucket.interview++;
+          else if (app.status === 'Assessment') bucket.assessment++;
           else if (app.status === 'Selected') bucket.selected++;
           else if (app.status === 'Rejected') bucket.rejected++;
         }
@@ -1417,19 +1576,21 @@ export default function AdminDashboard() {
           .filter(c => c.status !== 'pending_approval')
           .map(c => {
             const uid = c.uid || c.id;
-            const apps = filtered.filter(a => a.clientId === uid);
+            const apps = globalApps.filter(a => a.clientId === uid);
+            const filteredApps = filtered.filter(a => a.clientId === uid);
             const counselorId = c.assignedEmployeeId || c.assigned_employee_id;
             const counselor = counselors.find((co: any) => co.uid === counselorId);
-            const appData = c.applicationData || c.application_data || {};
+            const appData = c.application_data || c.applicationData || {};
             const name = `${appData.firstName || ''} ${appData.lastName || ''}`.trim() || c.email || uid;
             return {
               uid, name,
               counselorName: counselor?.displayName || counselor?.email || 'Unassigned',
-              total: apps.length,
-              applied: apps.filter(a => a.status === 'Applied').length,
-              interview: apps.filter(a => a.status === 'Interview').length,
-              selected: apps.filter(a => a.status === 'Selected').length,
-              rejected: apps.filter(a => a.status === 'Rejected').length,
+              total: filteredApps.length,
+              applied: filteredApps.filter(a => a.status === 'Applied').length,
+              interview: filteredApps.filter(a => a.status === 'Interview').length,
+              assessment: filteredApps.filter(a => a.status === 'Assessment').length,
+              selected: filteredApps.filter(a => a.status === 'Selected').length,
+              rejected: filteredApps.filter(a => a.status === 'Rejected').length,
             };
           })
           .filter(r => !analyticsSearch || r.name.toLowerCase().includes(analyticsSearch.toLowerCase()) || r.counselorName.toLowerCase().includes(analyticsSearch.toLowerCase()))
@@ -1443,7 +1604,7 @@ export default function AdminDashboard() {
         );
 
         const statusBadge = (status: string, count: number) => {
-          const colors: Record<string, string> = { Applied: 'bg-blue-50 text-blue-600', Interview: 'bg-purple-50 text-purple-600', Selected: 'bg-emerald-50 text-emerald-600', Rejected: 'bg-red-50 text-red-500' };
+          const colors: Record<string, string> = { Applied: 'bg-blue-50 text-blue-600', Interview: 'bg-amber-50 text-amber-600', Assessment: 'bg-purple-50 text-purple-600', Selected: 'bg-emerald-50 text-emerald-600', Rejected: 'bg-red-50 text-red-600' };
           return <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black ${colors[status] || 'bg-slate-100 text-slate-500'}`}>{count}</span>;
         };
 
@@ -1469,9 +1630,10 @@ export default function AdminDashboard() {
             </div>
 
             {/* Summary Stat Boxes */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
               {statBox('Total Applications', filtered.length, 'border-slate-200')}
               {statBox('Interviews', filtered.filter(a => a.status === 'Interview').length, 'border-purple-100')}
+              {statBox('Assessments', filtered.filter(a => a.status === 'Assessment').length, 'border-yellow-100')}
               {statBox('Selected', filtered.filter(a => a.status === 'Selected').length, 'border-emerald-100')}
               {statBox('Active Counselors', Object.values(counselorMap).filter(c => c.candidates.size > 0 && c.name !== 'Unassigned').length, 'border-indigo-100')}
             </div>
@@ -1486,7 +1648,7 @@ export default function AdminDashboard() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-100">
-                      {['Counselor', 'Candidates', 'Applied', 'Interview', 'Selected', 'Rejected'].map(h => (
+                      {['Counselor', 'Candidates', 'Applied', 'Interview', 'Assessment', 'Selected', 'Rejected'].map(h => (
                         <th key={h} className="text-left px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
                       ))}
                     </tr>
@@ -1501,12 +1663,13 @@ export default function AdminDashboard() {
                         <td className="px-4 py-3 text-xs font-bold text-slate-600">{v.candidates.size}</td>
                         <td className="px-4 py-3">{statusBadge('Applied', v.applied)}</td>
                         <td className="px-4 py-3">{statusBadge('Interview', v.interview)}</td>
+                        <td className="px-4 py-3">{statusBadge('Assessment', v.assessment)}</td>
                         <td className="px-4 py-3">{statusBadge('Selected', v.selected)}</td>
                         <td className="px-4 py-3">{statusBadge('Rejected', v.rejected)}</td>
                       </tr>
                     ))}
                     {Object.values(counselorMap).every(v => v.candidates.size === 0) && (
-                      <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400 text-xs font-bold uppercase">No data for this period</td></tr>
+                      <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-xs font-bold uppercase">No data for this period</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1535,7 +1698,7 @@ export default function AdminDashboard() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-100">
-                      {['Candidate', 'Counselor', 'Total', 'Applied', 'Interview', 'Selected', 'Rejected'].map(h => (
+                      {['Candidate', 'Counselor', 'Total', 'Applied', 'Interview', 'Assessment', 'Selected', 'Rejected'].map(h => (
                         <th key={h} className="text-left px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>
                       ))}
                     </tr>
@@ -1550,12 +1713,13 @@ export default function AdminDashboard() {
                         <td className="px-4 py-3 text-xs font-black text-slate-700">{r.total}</td>
                         <td className="px-4 py-3">{statusBadge('Applied', r.applied)}</td>
                         <td className="px-4 py-3">{statusBadge('Interview', r.interview)}</td>
+                        <td className="px-4 py-3">{statusBadge('Assessment', r.assessment)}</td>
                         <td className="px-4 py-3">{statusBadge('Selected', r.selected)}</td>
                         <td className="px-4 py-3">{statusBadge('Rejected', r.rejected)}</td>
                       </tr>
                     ))}
                     {candidateRows.length === 0 && (
-                      <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-xs font-bold uppercase">
+                      <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-xs font-bold uppercase">
                         {analyticsSearch ? `No results for "${analyticsSearch}"` : 'No data for this period'}
                       </td></tr>
                     )}

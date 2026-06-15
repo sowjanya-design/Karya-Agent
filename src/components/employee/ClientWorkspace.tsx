@@ -521,11 +521,11 @@ export const ClientWorkspace: React.FC<ClientWorkspaceProps> = ({ clientId, onDe
                   <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full font-mono">{applications.length} Total Applied</span>
                 </div>
                 <div className="flex gap-6">
-                  {['Applied', 'Interview', 'Selected', 'Rejected'].map(s => (
+                  {['Applied', 'Interview', 'Assessment', 'Selected', 'Rejected'].map(s => (
                     <div key={s} className="flex items-center gap-2">
                       <div className={cn(
                         "w-2 h-2 rounded-full",
-                        s === 'Selected' ? 'bg-emerald-500' : s === 'Rejected' ? 'bg-red-500' : s === 'Interview' ? 'bg-purple-500' : 'bg-gray-300'
+                        s === 'Applied' ? 'bg-blue-500' : s === 'Interview' ? 'bg-amber-500' : s === 'Assessment' ? 'bg-purple-500' : s === 'Selected' ? 'bg-emerald-500' : s === 'Rejected' ? 'bg-red-500' : 'bg-gray-300'
                       )} />
                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{s}</span>
                     </div>
@@ -543,9 +543,11 @@ export const ClientWorkspace: React.FC<ClientWorkspaceProps> = ({ clientId, onDe
                        <div className="flex items-center gap-8 flex-1 min-w-0">
                           <div className={cn(
                             "w-12 h-12 rounded-2xl border-2 flex items-center justify-center transition-all shrink-0",
-                            app.status === 'Selected' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
-                            app.status === 'Rejected' ? 'bg-red-50 border-red-100 text-red-600' :
-                            app.status === 'Interview' ? 'bg-purple-50 border-purple-100 text-purple-600' :
+                            app.status === 'Applied'    ? 'bg-blue-50 border-blue-100 text-blue-600' :
+                            app.status === 'Interview'  ? 'bg-amber-50 border-amber-100 text-amber-600' :
+                            app.status === 'Assessment' ? 'bg-purple-50 border-purple-100 text-purple-600' :
+                            app.status === 'Selected'   ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
+                            app.status === 'Rejected'   ? 'bg-red-50 border-red-100 text-red-600' :
                             'bg-gray-50 border-gray-100 text-gray-400'
                           )}>
                             <Monitor className="w-6 h-6" />
@@ -584,9 +586,11 @@ export const ClientWorkspace: React.FC<ClientWorkspaceProps> = ({ clientId, onDe
                             onChange={(e) => updateAppStatus(app.id, e.target.value)}
                             className={cn(
                               "appearance-none bg-gray-50 border border-gray-200 rounded-xl pl-4 pr-10 py-2.5 text-xs font-black uppercase tracking-widest focus:outline-none focus:ring-4 focus:ring-gray-200 cursor-pointer transition-all",
-                              app.status === 'Selected' ? 'text-emerald-600 border-emerald-200 bg-emerald-50' :
-                              app.status === 'Rejected' ? 'text-red-600 border-red-200 bg-red-50' :
-                              app.status === 'Interview' ? 'text-purple-600 border-purple-200 bg-purple-50' :
+                              app.status === 'Applied'    ? 'text-blue-600 border-blue-200 bg-blue-50' :
+                              app.status === 'Interview'  ? 'text-amber-600 border-amber-200 bg-amber-50' :
+                              app.status === 'Assessment' ? 'text-purple-600 border-purple-200 bg-purple-50' :
+                              app.status === 'Selected'   ? 'text-emerald-600 border-emerald-200 bg-emerald-50' :
+                              app.status === 'Rejected'   ? 'text-red-600 border-red-200 bg-red-50' :
                               'text-gray-600 hover:text-gray-900 border-gray-200 bg-white'
                             )}
                           >

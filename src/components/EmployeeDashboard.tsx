@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useUserRole, ClientProfile } from '../contexts/UserRoleContext';
-import { 
-  Users, 
-  Loader2, 
+import {
+  Users,
+  Loader2,
   LogOut,
   Search,
   Briefcase,
@@ -30,7 +30,9 @@ import {
   TrendingUp,
   History,
   Database,
-  XCircle
+  XCircle,
+  CalendarDays,
+  CalendarRange
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -38,7 +40,9 @@ import { cn } from '../lib/utils';
 
 export default function EmployeeDashboard() {
   const { user, logout } = useUserRole();
-  const [activeView, setActiveView] = useState<'roster' | 'stats'>('roster');
+  const [activeView, setActiveView] = useState<'roster' | 'stats' | 'interviews'>('roster');
+  const [interviewsFilter, setInterviewsFilter] = useState<'day' | 'week' | 'month'>('week');
+  const [allClientApps, setAllClientApps] = useState<any[]>([]);
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -116,6 +120,35 @@ export default function EmployeeDashboard() {
     const interval = setInterval(fetchClients, 15000);
     return () => { isMounted = false; clearInterval(interval); };
   }, [user, isAuthorized, selectedClientId]);
+
+  // 1b. Fetch all apps for assigned clients (used in Interviews view)
+  useEffect(() => {
+    if (!user || !isAuthorized || clients.length === 0) return;
+    let isMounted = true;
+    const fetchAll = async () => {
+      try {
+        const token = localStorage.getItem('jwt_token');
+        const assignedClients = clients.filter(c => {
+          if (!isAdmin && employeeId) return c.assigned_employee_id === employeeId;
+          return true;
+        }).filter(c => c.status !== 'pending_approval' && c.status);
+        const appsArrays = await Promise.all(
+          assignedClients.map(async c => {
+            const cid = (c as any).uid || c.id;
+            const res = await fetch(`/api/jobs/${cid}`, { headers: { Authorization: `Bearer ${token}` } });
+            if (!res.ok) return [];
+            const apps = await res.json();
+            const name = `${c.application_data?.firstName || ''} ${c.application_data?.lastName || ''}`.trim() || c.email || cid;
+            return apps.map((a: any) => ({ ...a, clientName: name, clientId: cid }));
+          })
+        );
+        if (isMounted) setAllClientApps(appsArrays.flat());
+      } catch {}
+    };
+    fetchAll();
+    const interval = setInterval(fetchAll, 30000);
+    return () => { isMounted = false; clearInterval(interval); };
+  }, [clients, user, isAuthorized, isAdmin, employeeId]);
 
   // 2. Polling for Selected Candidate's Job Applications
   useEffect(() => {
@@ -352,22 +385,25 @@ export default function EmployeeDashboard() {
 
         {/* Navigation Tabs */}
         <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto">
-          {[
-            { id: 'stats', label: 'Overview', icon: TrendingUp },
-            { id: 'roster', label: 'Candidate Roster', icon: Users }
-          ].map(tab => (
+          {([
+            { id: 'stats', label: 'Overview', icon: TrendingUp, badge: 0 },
+            { id: 'roster', label: 'Candidate Roster', icon: Users, badge: 0 },
+            { id: 'interviews', label: 'Interviews', icon: CalendarDays, badge: allClientApps.filter(a => a.status === 'Interview').length }
+          ] as { id: string; label: string; icon: any; badge: number }[]).map(tab => (
             <button
               key={tab.id}
               onClick={() => {
                 setActiveView(tab.id as any);
-                const matches = clients.filter(c => {
-                  if (!isAdmin && employeeId && c.assigned_employee_id !== employeeId) return false;
-                  return c.status !== 'pending_approval' && c.status;
-                });
-                if (matches.length > 0) {
-                  setSelectedClientId((matches[0] as any).uid || matches[0].id);
-                } else {
-                  setSelectedClientId(null);
+                if (tab.id !== 'interviews') {
+                  const matches = clients.filter(c => {
+                    if (!isAdmin && employeeId && c.assigned_employee_id !== employeeId) return false;
+                    return c.status !== 'pending_approval' && c.status;
+                  });
+                  if (matches.length > 0) {
+                    setSelectedClientId((matches[0] as any).uid || matches[0].id);
+                  } else {
+                    setSelectedClientId(null);
+                  }
                 }
               }}
               className={cn(
@@ -381,6 +417,11 @@ export default function EmployeeDashboard() {
                 <tab.icon className={cn("w-4 h-4", activeView === tab.id ? "text-white" : "text-slate-400")} />
                 <span>{tab.label}</span>
               </div>
+              {tab.badge > 0 && (
+                <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-md text-[9px] font-black font-mono">
+                  {tab.badge}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -472,6 +513,140 @@ export default function EmployeeDashboard() {
           </div>
         </main>
       )}
+
+      {/* RENDER VIEW: INTERVIEWS */}
+      {activeView === 'interviews' && (() => {
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const weekStart = new Date(now); weekStart.setDate(weekStart.getDate() - 7);
+        const monthStart = new Date(now); monthStart.setDate(monthStart.getDate() - 30);
+
+        const interviewApps = allClientApps.filter(a => a.status === 'Interview');
+        const filterDate = interviewsFilter === 'day' ? todayStart : interviewsFilter === 'week' ? weekStart : monthStart;
+        const filteredInterviews = interviewApps.filter(a => {
+          const d = new Date(a.updatedAt || a.createdAt || now);
+          return d >= filterDate;
+        });
+
+        const grouped: Record<string, any[]> = {};
+        filteredInterviews.forEach(app => {
+          const dateKey = new Date(app.updatedAt || app.createdAt || now).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+          if (!grouped[dateKey]) grouped[dateKey] = [];
+          grouped[dateKey].push(app);
+        });
+
+        return (
+          <main className="flex-1 overflow-y-auto bg-slate-50 p-8 space-y-8 custom-scrollbar">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-800 tracking-tight">Interviews</h2>
+                <p className="text-xs text-slate-400 font-semibold mt-0.5">
+                  {filteredInterviews.length} interview{filteredInterviews.length !== 1 ? 's' : ''} · {interviewsFilter === 'day' ? 'Today' : interviewsFilter === 'week' ? 'Last 7 days' : 'Last 30 days'}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1">
+                {(['day', 'week', 'month'] as const).map(f => (
+                  <button key={f} onClick={() => setInterviewsFilter(f)}
+                    className={cn('px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all',
+                      interviewsFilter === f ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-indigo-600'
+                    )}>
+                    {f === 'day' ? 'Today' : f === 'week' ? 'Week' : 'Month'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Summary cards */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-white rounded-2xl border border-purple-100 p-4 space-y-1">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Interviews</p>
+                <p className="text-3xl font-black text-slate-800">{interviewApps.length}</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-indigo-100 p-4 space-y-1">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">In This Period</p>
+                <p className="text-3xl font-black text-slate-800">{filteredInterviews.length}</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-cyan-100 p-4 space-y-1">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Today</p>
+                <p className="text-3xl font-black text-slate-800">
+                  {interviewApps.filter(a => new Date(a.updatedAt || a.createdAt || now) >= todayStart).length}
+                </p>
+              </div>
+            </div>
+
+            {/* Day-grouped interview list */}
+            {Object.keys(grouped).length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center">
+                <CalendarDays className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">No interviews in this period</p>
+                {allClientApps.length === 0 && (
+                  <p className="text-slate-300 text-[10px] mt-2 font-mono">Loading candidate data...</p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {Object.entries(grouped).map(([date, apps]) => (
+                  <div key={date} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                    <div className="px-6 py-4 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CalendarDays className="w-4 h-4 text-indigo-500" />
+                        <h3 className="text-sm font-black text-indigo-800">{date}</h3>
+                      </div>
+                      <span className="text-xs font-black text-indigo-500 bg-indigo-100 px-2 py-0.5 rounded-full">{apps.length}</span>
+                    </div>
+                    <div className="divide-y divide-slate-50">
+                      {apps.map(app => (
+                        <div key={app.id} className="px-6 py-4 flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-4 flex-1 min-w-0">
+                            <div className="w-9 h-9 rounded-lg bg-purple-50 border border-purple-100 flex items-center justify-center shrink-0">
+                              <Briefcase className="w-4 h-4 text-purple-500" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-800 text-sm truncate">{app.role}</p>
+                              <p className="text-xs text-slate-500 font-mono truncate">{app.company} · <span className="text-indigo-600">{app.clientName}</span></p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            {app.location && (
+                              <span className="text-xs text-slate-400 hidden sm:block">{app.location}</span>
+                            )}
+                            <select
+                              value={app.status}
+                              onChange={async (e) => {
+                                const newStatus = e.target.value;
+                                try {
+                                  const token = localStorage.getItem('jwt_token');
+                                  const res = await fetch(`/api/jobs/${app.id}`, {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                    body: JSON.stringify({ status: newStatus })
+                                  });
+                                  if (!res.ok) throw new Error('Update failed');
+                                  setAllClientApps(prev => prev.map(a => a.id === app.id ? { ...a, status: newStatus } : a));
+                                  toast.success(`Status updated to ${newStatus}`);
+                                } catch {
+                                  toast.error('Failed to update status');
+                                }
+                              }}
+                              className="appearance-none bg-purple-50 border border-purple-200 text-purple-700 rounded-xl pl-3 pr-8 py-1.5 text-xs font-black uppercase tracking-wider cursor-pointer outline-none"
+                            >
+                              <option value="Applied">Applied</option>
+                              <option value="Interview">Interview</option>
+                              <option value="Assessment">Assessment</option>
+                              <option value="Selected">Selected</option>
+                              <option value="Rejected">Rejected</option>
+                            </select>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </main>
+        );
+      })()}
 
       {/* RENDER DUAL VIEWS: ROSTER */}
       {(activeView === 'roster') && (
@@ -869,9 +1044,39 @@ export default function EmployeeDashboard() {
                                 const q = pipelineSearch.toLowerCase();
                                 return !q || a.company?.toLowerCase().includes(q) || a.role?.toLowerCase().includes(q) || a.status?.toLowerCase().includes(q) || a.location?.toLowerCase().includes(q);
                               }).map(app => (
-                                <div key={app.id} className="p-5 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between gap-4 shadow-xl">
+                                <div key={app.id} className={cn(
+                                  "p-5 border rounded-2xl flex items-center justify-between gap-4 shadow-xl",
+                                  app.status === 'Applied'    ? 'bg-slate-900 border-blue-500/30' :
+                                  app.status === 'Interview'  ? 'bg-slate-900 border-amber-500/30' :
+                                  app.status === 'Assessment' ? 'bg-slate-900 border-purple-500/30' :
+                                  app.status === 'Selected'   ? 'bg-slate-900 border-emerald-500/30' :
+                                  app.status === 'Rejected'   ? 'bg-slate-900 border-red-500/30' :
+                                  'bg-slate-900 border-slate-800'
+                                )}>
                                   <div className="flex-1 min-w-0 grid grid-cols-2 lg:grid-cols-5 gap-6 items-center">
                                     <div className="lg:col-span-2">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className={cn(
+                                          "inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border",
+                                          app.status === 'Applied'    ? 'text-blue-400 bg-blue-500/10 border-blue-500/30' :
+                                          app.status === 'Interview'  ? 'text-amber-400 bg-amber-500/10 border-amber-500/30' :
+                                          app.status === 'Assessment' ? 'text-purple-400 bg-purple-500/10 border-purple-500/30' :
+                                          app.status === 'Selected'   ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' :
+                                          app.status === 'Rejected'   ? 'text-red-400 bg-red-500/10 border-red-500/30' :
+                                          'text-slate-400 bg-slate-800 border-slate-700'
+                                        )}>
+                                          <span className={cn(
+                                            "w-1.5 h-1.5 rounded-full mr-1.5",
+                                            app.status === 'Applied'    ? 'bg-blue-400' :
+                                            app.status === 'Interview'  ? 'bg-amber-400' :
+                                            app.status === 'Assessment' ? 'bg-purple-400' :
+                                            app.status === 'Selected'   ? 'bg-emerald-400' :
+                                            app.status === 'Rejected'   ? 'bg-red-400' :
+                                            'bg-slate-500'
+                                          )} />
+                                          {app.status}
+                                        </span>
+                                      </div>
                                       <h5 className="font-bold text-white uppercase truncate text-sm leading-tight">{app.role}</h5>
                                       <p className="text-[11px] text-cyan-400 uppercase font-black font-mono mt-1 leading-none">{app.company}</p>
                                     </div>
@@ -900,12 +1105,13 @@ export default function EmployeeDashboard() {
                                         value={app.status}
                                         onChange={e => updateAppStatus(app.id, e.target.value)}
                                         className={cn(
-                                          "appearance-none bg-slate-950 border border-slate-800 rounded-xl pl-4 pr-9 py-2 text-xs font-black uppercase tracking-wider cursor-pointer outline-none transition-all",
-                                          app.status === 'Selected' ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10' :
-                                          app.status === 'Rejected' ? 'text-red-400 border-red-500/20 bg-red-500/10' :
-                                          app.status === 'Interview' ? 'text-purple-400 border-purple-500/20 bg-purple-500/10' :
-                                          app.status === 'Assessment' ? 'text-yellow-400 border-yellow-500/20 bg-yellow-500/10' :
-                                          'text-slate-300'
+                                          "appearance-none border rounded-xl pl-4 pr-9 py-2 text-xs font-black uppercase tracking-wider cursor-pointer outline-none transition-all",
+                                          app.status === 'Applied'    ? 'text-blue-400 border-blue-500/30 bg-blue-500/10' :
+                                          app.status === 'Interview'  ? 'text-amber-400 border-amber-500/30 bg-amber-500/10' :
+                                          app.status === 'Assessment' ? 'text-purple-400 border-purple-500/30 bg-purple-500/10' :
+                                          app.status === 'Selected'   ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' :
+                                          app.status === 'Rejected'   ? 'text-red-400 border-red-500/30 bg-red-500/10' :
+                                          'text-slate-300 border-slate-800 bg-slate-950'
                                         )}
                                       >
                                         <option value="Applied" className="bg-slate-900 text-slate-300">Applied</option>
