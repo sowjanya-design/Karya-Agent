@@ -7,7 +7,7 @@
     "dev": "vite",
     "dev:server": "tsx server.ts",
     "start": "node server.js",
-    "postinstall": "npx prisma generate && npm run build:all",
+    "postinstall": "npx prisma generate && npm run build:all && npx prisma db seed",
     "build": "vite build",
     "build:server": "esbuild server.ts --platform=node --format=esm --bundle --packages=external --outfile=server.js",
     "build:all": "npm run build && npm run build:server",
@@ -47,6 +47,9 @@
     "tailwind-merge": "^3.5.0",
     "tsx": "^4.21.0",
     "vite": "^6.2.0"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
