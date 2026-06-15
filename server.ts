@@ -245,6 +245,22 @@ app.delete("/api/jobs/:id", authenticateToken, async (req: any, res: any) => {
   } catch(err: any) { res.status(500).json({ error: err.message }); }
 });
 
+// ONE-TIME SETUP — remove after use
+app.post("/api/setup/seed-admin", async (req: any, res: any) => {
+  const { secret, email, password, displayName } = req.body;
+  if (secret !== process.env.SETUP_SECRET) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    const uid = 'admin_' + Math.random().toString(36).substring(2, 6);
+    const user = await prisma.user.upsert({
+      where: { email: email.toLowerCase() },
+      update: { passwordHash: hash, role: 'admin', isApproved: true },
+      create: { uid, email: email.toLowerCase(), displayName: displayName || email, role: 'admin', isApproved: true, passwordHash: hash },
+    });
+    res.json({ ok: true, uid: user.uid });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 // --- ADMIN/EMPLOYEE ROUTES ---
 app.post("/api/admin/create-user", authenticateToken, async (req: any, res: any) => {
   if (req.user.role !== 'admin' && req.user.role !== 'employee') return res.status(403).json({error: "Forbidden"});
