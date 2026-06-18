@@ -6,8 +6,6 @@ import nodemailer from "nodemailer";
 import Anthropic from "@anthropic-ai/sdk";
 import * as cheerio from "cheerio";
 import { PrismaClient } from "@prisma/client";
-import { PrismaNeonHTTP } from "@prisma/adapter-neon";
-import { neon } from "@neondatabase/serverless";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import cors from "cors";
@@ -17,10 +15,29 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Neon HTTP adapter — stateless per-request HTTP, no persistent connection that can panic
-const sql = neon(process.env.DATABASE_URL!);
-const adapter = new PrismaNeonHTTP(sql);
-const prisma = new PrismaClient({ adapter } as any);
+// Append connection_limit=1 so Neon doesn't accumulate multiple idle connections
+const _rawDb = process.env.DATABASE_URL || '';
+const _dbUrl = _rawDb.includes('connection_limit')
+  ? _rawDb
+  : (_rawDb.includes('?') ? `${_rawDb}&connection_limit=1` : `${_rawDb}?connection_limit=1`);
+
+let prisma = new PrismaClient({ datasources: { db: { url: _dbUrl || undefined } } });
+
+// Neon closes idle TCP connections after ~5 min; ping every 3 min to keep it alive.
+// If the engine panics anyway, recreate the client so the next request succeeds.
+const _keepAlive = setInterval(async () => {
+  try {
+    await prisma.user.count();
+  } catch (e: any) {
+    const msg = String(e?.message ?? '');
+    if (msg.includes('timer has gone away') || msg.includes('PANIC')) {
+      console.warn('[db] Prisma panic on keepalive – recreating client');
+      prisma.$disconnect().catch(() => {});
+      prisma = new PrismaClient({ datasources: { db: { url: _dbUrl || undefined } } });
+    }
+  }
+}, 3 * 60 * 1000);
+_keepAlive.unref();
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
 
@@ -84,7 +101,7 @@ app.use('/api', (_req, res, next) => {
 
 app.get("/api/health", async (req, res) => {
   try {
-    await prisma.user.count();
+    await prisma.$queryRaw`SELECT 1`;
     res.json({ status: "ok", db: "connected", timestamp: new Date().toISOString() });
   } catch (e: any) {
     res.status(500).json({ status: "error", db: "disconnected", detail: e?.message?.slice(0, 120) });
