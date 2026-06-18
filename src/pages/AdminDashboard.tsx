@@ -1522,11 +1522,11 @@ export default function AdminDashboard() {
                               onChange={(e) => updateAppStatus(app.id, e.target.value)}
                               className="appearance-none bg-purple-50 border border-purple-200 text-purple-700 rounded-xl pl-3 pr-8 py-1.5 text-xs font-black uppercase tracking-wider cursor-pointer outline-none"
                             >
-                              <option value="Applied">Applied</option>
-                              <option value="Interview">Interview</option>
-                              <option value="Assessment">Assessment</option>
-                              <option value="Selected">Selected</option>
-                              <option value="Rejected">Rejected</option>
+                              <option value="Applied"    style={{background:'#1e3a5f',color:'#60a5fa'}}>Applied</option>
+                              <option value="Interview"  style={{background:'#451a03',color:'#fbbf24'}}>Interview</option>
+                              <option value="Assessment" style={{background:'#2e1065',color:'#c084fc'}}>Assessment</option>
+                              <option value="Selected"   style={{background:'#052e16',color:'#34d399'}}>Selected</option>
+                              <option value="Rejected"   style={{background:'#450a0a',color:'#f87171'}}>Rejected</option>
                             </select>
                           </div>
                         </div>

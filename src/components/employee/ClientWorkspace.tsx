@@ -594,11 +594,11 @@ export const ClientWorkspace: React.FC<ClientWorkspaceProps> = ({ clientId, onDe
                               'text-gray-600 hover:text-gray-900 border-gray-200 bg-white'
                             )}
                           >
-                            <option>Applied</option>
-                            <option>Interview</option>
-                            <option>Assessment</option>
-                            <option>Selected</option>
-                            <option>Rejected</option>
+                            <option value="Applied"    style={{background:'#dbeafe',color:'#1d4ed8'}}>Applied</option>
+                            <option value="Interview"  style={{background:'#fef3c7',color:'#b45309'}}>Interview</option>
+                            <option value="Assessment" style={{background:'#ede9fe',color:'#7c3aed'}}>Assessment</option>
+                            <option value="Selected"   style={{background:'#d1fae5',color:'#065f46'}}>Selected</option>
+                            <option value="Rejected"   style={{background:'#fee2e2',color:'#b91c1c'}}>Rejected</option>
                           </select>
                           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                         </div>
