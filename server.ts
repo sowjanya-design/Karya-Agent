@@ -10,30 +10,53 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import cors from "cors";
 
+// Load .env from both project root and prisma/ subdirectory.
+// On Hostinger, Prisma writes the env to prisma/.env so dotenv misses it.
 dotenv.config();
+dotenv.config({ path: path.join(process.cwd(), 'prisma', '.env') });
+dotenv.config({ path: path.join(process.cwd(), '..', '.env') });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Let Prisma find DATABASE_URL via its own .env scanning — do not pass
-// datasources so Prisma uses the schema env() resolution which works on Hostinger.
+// Standard PrismaClient as initial fallback — server always starts.
 let prisma = new PrismaClient();
 
-// Ping every 2 min to prevent Neon compute from suspending (free-tier threshold: 5 min).
-// If the binary engine still panics, recreate the client so the next request succeeds.
-const _keepAlive = setInterval(async () => {
+// After PrismaClient init its internal env load may have populated DATABASE_URL.
+// Try to upgrade to @prisma/adapter-pg (standard TCP) which bypasses the
+// Prisma binary engine entirely — no more "timer has gone away" panics.
+void (async () => {
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    const dbUrl = process.env.DATABASE_URL;
+    console.log('[db] DATABASE_URL:', dbUrl ? dbUrl.slice(0, 50) + '...' : 'NOT FOUND');
+    if (!dbUrl) throw new Error('DATABASE_URL not in process.env');
+
+    const [{ default: pg }, { PrismaPg }] = await Promise.all([
+      import('pg') as any,
+      import('@prisma/adapter-pg') as any,
+    ]);
+    const pool    = new pg.Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+    const adapter = new PrismaPg(pool);
+    const next    = new PrismaClient({ adapter } as any);
+    await next.$queryRaw`SELECT 1`;   // verify it actually works before swapping
+    await prisma.$disconnect();
+    prisma = next;
+    console.log('[db] @prisma/adapter-pg active — binary engine bypassed');
   } catch (e: any) {
-    const msg = String(e?.message ?? '');
-    if (msg.includes('timer has gone away') || msg.includes('PANIC')) {
-      console.warn('[db] panic – recreating PrismaClient');
-      prisma.$disconnect().catch(() => {});
-      prisma = new PrismaClient();
-    }
+    console.warn('[db] pg adapter skipped, using binary engine:', e.message);
+    // Keepalive to prevent Neon compute suspend (5-min free-tier threshold)
+    const t = setInterval(async () => {
+      try { await prisma.$queryRaw`SELECT 1`; }
+      catch (e2: any) {
+        if (String(e2?.message).includes('PANIC') || String(e2?.message).includes('timer')) {
+          prisma.$disconnect().catch(() => {});
+          prisma = new PrismaClient();
+        }
+      }
+    }, 2 * 60 * 1000);
+    t.unref();
   }
-}, 2 * 60 * 1000);
-_keepAlive.unref();
+})();
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
 
