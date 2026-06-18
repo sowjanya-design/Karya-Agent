@@ -6,37 +6,23 @@ import nodemailer from "nodemailer";
 import Anthropic from "@anthropic-ai/sdk";
 import * as cheerio from "cheerio";
 import { PrismaClient } from "@prisma/client";
+import { PrismaNeon } from "@prisma/adapter-neon";
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import { WebSocket } from "ws";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import cors from "cors";
 
 dotenv.config();
 
-console.log("🚀 Server starting...");
-console.log("NODE_ENV:", process.env.NODE_ENV);
-console.log("PORT:", process.env.PORT);
-console.log("DATABASE_URL set:", !!process.env.DATABASE_URL);
-console.log("DATABASE_URL preview:", process.env.DATABASE_URL?.slice(0, 60));
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Use standard PrismaClient with DATABASE_URL directly
-// No Neon WebSocket adapter needed — Neon supports standard pg connections
-let prisma: PrismaClient;
-try {
-  prisma = new PrismaClient({
-    datasources: {
-      db: {
-        url: process.env.DATABASE_URL,
-      },
-    },
-  });
-  console.log("✅ Prisma initialized");
-} catch (e) {
-  console.error("❌ Prisma init failed:", e);
-  process.exit(1);
-}
+// Use Neon WebSocket adapter to avoid Prisma binary engine timer panic on serverless Postgres
+neonConfig.webSocketConstructor = WebSocket;
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaNeon(pool);
+const prisma = new PrismaClient({ adapter } as any);
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
 
