@@ -12,6 +12,9 @@ import cors from "cors";
 
 dotenv.config();
 
+// Capture DATABASE_URL synchronously before any async imports can mutate process.env
+const DATABASE_URL = process.env.DATABASE_URL;
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -19,10 +22,9 @@ const __dirname = path.dirname(__filename);
 // Start with standard PrismaClient so the server always boots immediately.
 // Then attempt to swap in the Neon WebSocket adapter in a background task —
 // it avoids Prisma's binary-engine timer panic on Neon serverless connections.
-// No top-level await here; the IIFE runs after the server is already listening.
 // ---------------------------------------------------------------------------
 let prisma: PrismaClient = new PrismaClient({
-  datasources: { db: { url: process.env.DATABASE_URL } },
+  datasources: { db: { url: DATABASE_URL } },
 });
 
 void (async () => {
@@ -36,8 +38,9 @@ void (async () => {
     const { PrismaNeon }       = adapterPkg as any;
     const WS = (wsPkg as any).WebSocket ?? (wsPkg as any).default;
 
+    if (!DATABASE_URL) throw new Error('DATABASE_URL is not set');
     neonConfig.webSocketConstructor = WS;
-    const pool    = new Pool({ connectionString: process.env.DATABASE_URL });
+    const pool    = new Pool({ connectionString: DATABASE_URL });
     const adapter = new PrismaNeon(pool);
     const next    = new PrismaClient({ adapter } as any);
 
