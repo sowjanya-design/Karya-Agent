@@ -6,9 +6,8 @@ import nodemailer from "nodemailer";
 import Anthropic from "@anthropic-ai/sdk";
 import * as cheerio from "cheerio";
 import { PrismaClient } from "@prisma/client";
-import { PrismaNeon } from "@prisma/adapter-neon";
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import { WebSocket } from "ws";
+import { PrismaNeonHTTP } from "@prisma/adapter-neon";
+import { neon } from "@neondatabase/serverless";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import cors from "cors";
@@ -18,10 +17,9 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Use Neon WebSocket adapter to avoid Prisma binary engine timer panic on serverless Postgres
-neonConfig.webSocketConstructor = WebSocket;
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const adapter = new PrismaNeon(pool);
+// Neon HTTP adapter — stateless per-request HTTP, no persistent connection that can panic
+const sql = neon(process.env.DATABASE_URL!);
+const adapter = new PrismaNeonHTTP(sql);
 const prisma = new PrismaClient({ adapter } as any);
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
@@ -86,7 +84,7 @@ app.use('/api', (_req, res, next) => {
 
 app.get("/api/health", async (req, res) => {
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    await prisma.user.count();
     res.json({ status: "ok", db: "connected", timestamp: new Date().toISOString() });
   } catch (e: any) {
     res.status(500).json({ status: "error", db: "disconnected", detail: e?.message?.slice(0, 120) });
