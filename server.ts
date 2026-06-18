@@ -16,19 +16,31 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ---------------------------------------------------------------------------
-// Prisma + Neon adapter via top-level dynamic import().
-// dynamic import() is NEVER bundled by esbuild (unlike static imports), so
-// @neondatabase/serverless and @prisma/adapter-neon stay as runtime imports.
-// Top-level await means prisma is fully ready before app.listen() fires.
+// Prisma + Neon: try the WebSocket Pool adapter first (avoids binary-engine
+// timer panic). Falls back to standard PrismaClient if the adapter packages
+// are missing so the server always starts.
+// The build:server script passes --external: for these packages so esbuild
+// never bundles them — they resolve from node_modules at runtime.
 // ---------------------------------------------------------------------------
-const { Pool, neonConfig } = await import('@neondatabase/serverless') as any;
-const { PrismaNeon }        = await import('@prisma/adapter-neon')      as any;
-const { WebSocket }         = await import('ws')                         as any;
+let prisma: PrismaClient;
+try {
+  // @ts-ignore — types not installed locally; packages present on Hostinger
+  const { Pool, neonConfig } = await import('@neondatabase/serverless');
+  // @ts-ignore
+  const { PrismaNeon } = await import('@prisma/adapter-neon');
+  // @ts-ignore
+  const wsModule = await import('ws');
+  const WS = (wsModule as any).WebSocket ?? (wsModule as any).default;
 
-neonConfig.webSocketConstructor = WebSocket;
-const _pool    = new Pool({ connectionString: process.env.DATABASE_URL });
-const _adapter = new PrismaNeon(_pool);
-const prisma   = new PrismaClient({ adapter: _adapter } as any);
+  neonConfig.webSocketConstructor = WS;
+  const pool    = new Pool({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaNeon(pool);
+  prisma = new PrismaClient({ adapter } as any);
+  console.log('[db] Neon WebSocket adapter ready');
+} catch (e: any) {
+  console.warn('[db] Neon adapter unavailable, using standard Prisma:', e.message);
+  prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
 
