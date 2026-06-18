@@ -157,17 +157,19 @@ export default function EmployeeDashboard() {
       return;
     }
 
-    // Clear immediately when switching candidates so stale apps never show
     setSelectedClientApps([]);
 
     let isMounted = true;
+    let isFirstFetch = true;
+
     const fetchApps = async () => {
-      if (isMounted) setIsLoadingApps(true);
+      // Only show loading spinner on initial load, not background polls
+      if (isMounted && isFirstFetch) setIsLoadingApps(true);
       try {
         const token = localStorage.getItem('jwt_token');
         const res = await fetch(`/api/jobs/${selectedClientId}`, { headers: { Authorization: `Bearer ${token}` } });
         if (!res.ok) {
-          if (isMounted) setSelectedClientApps([]);
+          if (isMounted && isFirstFetch) setSelectedClientApps([]);
           return;
         }
         const apps = await res.json();
@@ -176,14 +178,14 @@ export default function EmployeeDashboard() {
         }
       } catch (err) {
         console.error(err);
-        if (isMounted) setSelectedClientApps([]);
       } finally {
         if (isMounted) setIsLoadingApps(false);
+        isFirstFetch = false;
       }
     };
 
     fetchApps();
-    const interval = setInterval(fetchApps, 10000);
+    const interval = setInterval(fetchApps, 30000);
     return () => { isMounted = false; clearInterval(interval); };
   }, [selectedClientId]);
 
@@ -1114,11 +1116,11 @@ export default function EmployeeDashboard() {
                                           'text-slate-300 border-slate-800 bg-slate-950'
                                         )}
                                       >
-                                        <option value="Applied" className="bg-slate-900 text-slate-300">Applied</option>
-                                        <option value="Interview" className="bg-slate-900 text-slate-300">Interview</option>
-                                        <option value="Assessment" className="bg-slate-900 text-slate-300">Assessment</option>
-                                        <option value="Selected" className="bg-slate-900 text-slate-300">Selected</option>
-                                        <option value="Rejected" className="bg-slate-900 text-slate-300">Rejected</option>
+                                        <option value="Applied"    style={{background:'#1e3a5f',color:'#60a5fa'}}>Applied</option>
+                                        <option value="Interview"  style={{background:'#451a03',color:'#fbbf24'}}>Interview</option>
+                                        <option value="Assessment" style={{background:'#2e1065',color:'#c084fc'}}>Assessment</option>
+                                        <option value="Selected"   style={{background:'#052e16',color:'#34d399'}}>Selected</option>
+                                        <option value="Rejected"   style={{background:'#450a0a',color:'#f87171'}}>Rejected</option>
                                       </select>
                                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
                                     </div>

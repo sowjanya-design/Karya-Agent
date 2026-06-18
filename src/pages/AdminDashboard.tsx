@@ -1257,11 +1257,11 @@ export default function AdminDashboard() {
                                           'text-slate-300'
                                         )}
                                       >
-                                        <option value="Applied" className="bg-slate-900 text-slate-300">Applied</option>
-                                        <option value="Interview" className="bg-slate-900 text-slate-300">Interview</option>
-                                        <option value="Assessment" className="bg-slate-900 text-slate-300">Assessment</option>
-                                        <option value="Selected" className="bg-slate-900 text-slate-300">Selected</option>
-                                        <option value="Rejected" className="bg-slate-900 text-slate-300">Rejected</option>
+                                        <option value="Applied"    style={{background:'#1e3a5f',color:'#60a5fa'}}>Applied</option>
+                                        <option value="Interview"  style={{background:'#451a03',color:'#fbbf24'}}>Interview</option>
+                                        <option value="Assessment" style={{background:'#2e1065',color:'#c084fc'}}>Assessment</option>
+                                        <option value="Selected"   style={{background:'#052e16',color:'#34d399'}}>Selected</option>
+                                        <option value="Rejected"   style={{background:'#450a0a',color:'#f87171'}}>Rejected</option>
                                       </select>
                                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
                                     </div>
