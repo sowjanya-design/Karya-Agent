@@ -12,45 +12,28 @@ import cors from "cors";
 
 dotenv.config();
 
-// Capture DATABASE_URL synchronously before any async imports can mutate process.env
-const DATABASE_URL = process.env.DATABASE_URL;
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ---------------------------------------------------------------------------
-// Start with standard PrismaClient so the server always boots immediately.
-// Then attempt to swap in the Neon WebSocket adapter in a background task —
-// it avoids Prisma's binary-engine timer panic on Neon serverless connections.
-// ---------------------------------------------------------------------------
-let prisma: PrismaClient = new PrismaClient({
-  datasources: { db: { url: DATABASE_URL } },
-});
+// Let Prisma find DATABASE_URL via its own .env scanning — do not pass
+// datasources so Prisma uses the schema env() resolution which works on Hostinger.
+let prisma = new PrismaClient();
 
-void (async () => {
+// Ping every 2 min to prevent Neon compute from suspending (free-tier threshold: 5 min).
+// If the binary engine still panics, recreate the client so the next request succeeds.
+const _keepAlive = setInterval(async () => {
   try {
-    const [neonPkg, adapterPkg, wsPkg] = await Promise.all([
-      import('@neondatabase/serverless'),
-      import('@prisma/adapter-neon'),
-      import('ws'),
-    ]);
-    const { Pool, neonConfig } = neonPkg as any;
-    const { PrismaNeon }       = adapterPkg as any;
-    const WS = (wsPkg as any).WebSocket ?? (wsPkg as any).default;
-
-    if (!DATABASE_URL) throw new Error('DATABASE_URL is not set');
-    neonConfig.webSocketConstructor = WS;
-    const pool    = new Pool({ connectionString: DATABASE_URL });
-    const adapter = new PrismaNeon(pool);
-    const next    = new PrismaClient({ adapter } as any);
-
-    await prisma.$disconnect();
-    prisma = next;
-    console.log('[db] Neon WebSocket adapter active');
+    await prisma.$queryRaw`SELECT 1`;
   } catch (e: any) {
-    console.warn('[db] Neon adapter skipped:', e.message);
+    const msg = String(e?.message ?? '');
+    if (msg.includes('timer has gone away') || msg.includes('PANIC')) {
+      console.warn('[db] panic – recreating PrismaClient');
+      prisma.$disconnect().catch(() => {});
+      prisma = new PrismaClient();
+    }
   }
-})();
+}, 2 * 60 * 1000);
+_keepAlive.unref();
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
 
