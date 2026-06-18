@@ -16,31 +16,38 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ---------------------------------------------------------------------------
-// Prisma + Neon: try the WebSocket Pool adapter first (avoids binary-engine
-// timer panic). Falls back to standard PrismaClient if the adapter packages
-// are missing so the server always starts.
-// The build:server script passes --external: for these packages so esbuild
-// never bundles them — they resolve from node_modules at runtime.
+// Start with standard PrismaClient so the server always boots immediately.
+// Then attempt to swap in the Neon WebSocket adapter in a background task —
+// it avoids Prisma's binary-engine timer panic on Neon serverless connections.
+// No top-level await here; the IIFE runs after the server is already listening.
 // ---------------------------------------------------------------------------
-let prisma: PrismaClient;
-try {
-  // @ts-ignore — types not installed locally; packages present on Hostinger
-  const { Pool, neonConfig } = await import('@neondatabase/serverless');
-  // @ts-ignore
-  const { PrismaNeon } = await import('@prisma/adapter-neon');
-  // @ts-ignore
-  const wsModule = await import('ws');
-  const WS = (wsModule as any).WebSocket ?? (wsModule as any).default;
+let prisma: PrismaClient = new PrismaClient({
+  datasources: { db: { url: process.env.DATABASE_URL } },
+});
 
-  neonConfig.webSocketConstructor = WS;
-  const pool    = new Pool({ connectionString: process.env.DATABASE_URL });
-  const adapter = new PrismaNeon(pool);
-  prisma = new PrismaClient({ adapter } as any);
-  console.log('[db] Neon WebSocket adapter ready');
-} catch (e: any) {
-  console.warn('[db] Neon adapter unavailable, using standard Prisma:', e.message);
-  prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
-}
+void (async () => {
+  try {
+    const [neonPkg, adapterPkg, wsPkg] = await Promise.all([
+      import('@neondatabase/serverless'),
+      import('@prisma/adapter-neon'),
+      import('ws'),
+    ]);
+    const { Pool, neonConfig } = neonPkg as any;
+    const { PrismaNeon }       = adapterPkg as any;
+    const WS = (wsPkg as any).WebSocket ?? (wsPkg as any).default;
+
+    neonConfig.webSocketConstructor = WS;
+    const pool    = new Pool({ connectionString: process.env.DATABASE_URL });
+    const adapter = new PrismaNeon(pool);
+    const next    = new PrismaClient({ adapter } as any);
+
+    await prisma.$disconnect();
+    prisma = next;
+    console.log('[db] Neon WebSocket adapter active');
+  } catch (e: any) {
+    console.warn('[db] Neon adapter skipped:', e.message);
+  }
+})();
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
 
