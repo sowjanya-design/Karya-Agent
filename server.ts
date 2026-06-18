@@ -16,39 +16,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ---------------------------------------------------------------------------
-// Prisma + Neon: use the @prisma/adapter-neon WebSocket Pool adapter so
-// Prisma never uses its binary engine TCP connection (which panics when Neon
-// suspends the compute endpoint). Initialise lazily via Proxy so that
-// process.env.DATABASE_URL is definitely populated on first use.
+// Prisma + Neon adapter via top-level dynamic import().
+// dynamic import() is NEVER bundled by esbuild (unlike static imports), so
+// @neondatabase/serverless and @prisma/adapter-neon stay as runtime imports.
+// Top-level await means prisma is fully ready before app.listen() fires.
 // ---------------------------------------------------------------------------
-let _prismaInstance: PrismaClient | null = null;
+const { Pool, neonConfig } = await import('@neondatabase/serverless') as any;
+const { PrismaNeon }        = await import('@prisma/adapter-neon')      as any;
+const { WebSocket }         = await import('ws')                         as any;
 
-function _getOrCreatePrisma(): PrismaClient {
-  if (_prismaInstance) return _prismaInstance;
-
-  // Dynamic imports avoid esbuild from bundling these packages inline.
-  // They are listed in package.json dependencies so they are always installed.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { Pool, neonConfig } = require('@neondatabase/serverless');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { PrismaNeon } = require('@prisma/adapter-neon');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const ws = require('ws');
-
-  neonConfig.webSocketConstructor = ws;
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  const adapter = new PrismaNeon(pool);
-  _prismaInstance = new PrismaClient({ adapter } as any);
-  return _prismaInstance;
-}
-
-// Proxy lets all existing `prisma.xxx` calls work without modification
-// while deferring the actual client creation to first use.
-const prisma = new Proxy({} as PrismaClient, {
-  get(_t, prop: string | symbol) {
-    return (_getOrCreatePrisma() as any)[prop as string];
-  },
-});
+neonConfig.webSocketConstructor = WebSocket;
+const _pool    = new Pool({ connectionString: process.env.DATABASE_URL });
+const _adapter = new PrismaNeon(_pool);
+const prisma   = new PrismaClient({ adapter: _adapter } as any);
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
 
