@@ -15,29 +15,40 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Append connection_limit=1 so Neon doesn't accumulate multiple idle connections
-const _rawDb = process.env.DATABASE_URL || '';
-const _dbUrl = _rawDb.includes('connection_limit')
-  ? _rawDb
-  : (_rawDb.includes('?') ? `${_rawDb}&connection_limit=1` : `${_rawDb}?connection_limit=1`);
+// ---------------------------------------------------------------------------
+// Prisma + Neon: use the @prisma/adapter-neon WebSocket Pool adapter so
+// Prisma never uses its binary engine TCP connection (which panics when Neon
+// suspends the compute endpoint). Initialise lazily via Proxy so that
+// process.env.DATABASE_URL is definitely populated on first use.
+// ---------------------------------------------------------------------------
+let _prismaInstance: PrismaClient | null = null;
 
-let prisma = new PrismaClient({ datasources: { db: { url: _dbUrl || undefined } } });
+function _getOrCreatePrisma(): PrismaClient {
+  if (_prismaInstance) return _prismaInstance;
 
-// Neon closes idle TCP connections after ~5 min; ping every 3 min to keep it alive.
-// If the engine panics anyway, recreate the client so the next request succeeds.
-const _keepAlive = setInterval(async () => {
-  try {
-    await prisma.user.count();
-  } catch (e: any) {
-    const msg = String(e?.message ?? '');
-    if (msg.includes('timer has gone away') || msg.includes('PANIC')) {
-      console.warn('[db] Prisma panic on keepalive – recreating client');
-      prisma.$disconnect().catch(() => {});
-      prisma = new PrismaClient({ datasources: { db: { url: _dbUrl || undefined } } });
-    }
-  }
-}, 3 * 60 * 1000);
-_keepAlive.unref();
+  // Dynamic imports avoid esbuild from bundling these packages inline.
+  // They are listed in package.json dependencies so they are always installed.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { Pool, neonConfig } = require('@neondatabase/serverless');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { PrismaNeon } = require('@prisma/adapter-neon');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const ws = require('ws');
+
+  neonConfig.webSocketConstructor = ws;
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaNeon(pool);
+  _prismaInstance = new PrismaClient({ adapter } as any);
+  return _prismaInstance;
+}
+
+// Proxy lets all existing `prisma.xxx` calls work without modification
+// while deferring the actual client creation to first use.
+const prisma = new Proxy({} as PrismaClient, {
+  get(_t, prop: string | symbol) {
+    return (_getOrCreatePrisma() as any)[prop as string];
+  },
+});
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
 
