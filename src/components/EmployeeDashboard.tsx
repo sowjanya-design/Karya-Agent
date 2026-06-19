@@ -56,8 +56,9 @@ export default function EmployeeDashboard() {
   // Overview popup modals
   const [overviewPopup, setOverviewPopup] = useState<'candidates' | 'pending' | null>(null);
 
-  // Pipeline search
+  // Pipeline search & sort
   const [pipelineSearch, setPipelineSearch] = useState('');
+  const [pipelineSort, setPipelineSort] = useState<'latest' | 'oldest' | 'az'>('latest');
 
   // Job Application Form State
   const [entryMode, setEntryMode] = useState<'link' | 'manual'>('link');
@@ -152,41 +153,27 @@ export default function EmployeeDashboard() {
 
   // 2. Polling for Selected Candidate's Job Applications
   useEffect(() => {
-    if (!selectedClientId) {
-      setSelectedClientApps([]);
-      return;
-    }
+    if (!selectedClientId) { setSelectedClientApps([]); return; }
 
     setSelectedClientApps([]);
-
     let isMounted = true;
-    let isFirstFetch = true;
+    setIsLoadingApps(true);
 
-    const fetchApps = async () => {
-      // Only show loading spinner on initial load, not background polls
-      if (isMounted && isFirstFetch) setIsLoadingApps(true);
-      try {
-        const token = localStorage.getItem('jwt_token');
-        const res = await fetch(`/api/jobs/${selectedClientId}`, { headers: { Authorization: `Bearer ${token}` } });
-        if (!res.ok) {
-          if (isMounted && isFirstFetch) setSelectedClientApps([]);
-          return;
-        }
-        const apps = await res.json();
-        if (isMounted) {
-          setSelectedClientApps(apps.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        if (isMounted) setIsLoadingApps(false);
-        isFirstFetch = false;
-      }
-    };
+    fetch(`/api/jobs/${selectedClientId}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('jwt_token')}` }
+    })
+      .then(r => r.ok ? r.json() : [])
+      .then(apps => {
+        if (isMounted) setSelectedClientApps(
+          apps.sort((a: any, b: any) =>
+            new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+          )
+        );
+      })
+      .catch(console.error)
+      .finally(() => { if (isMounted) setIsLoadingApps(false); });
 
-    fetchApps();
-    const interval = setInterval(fetchApps, 30000);
-    return () => { isMounted = false; clearInterval(interval); };
+    return () => { isMounted = false; };
   }, [selectedClientId]);
 
   if (!isAuthorized) {
@@ -331,7 +318,7 @@ export default function EmployeeDashboard() {
         body: JSON.stringify({ status })
       });
       if (!res.ok) throw new Error('Update failed');
-      setSelectedClientApps(prev => prev.map(a => a.id === appId ? { ...a, status } : a));
+      setSelectedClientApps(prev => prev.map(a => a.id === appId ? { ...a, status, updatedAt: new Date().toISOString() } : a));
       toast.success("Status updated.");
     } catch (err: any) {
       toast.error("Failed to update status: " + err.message);
@@ -1003,11 +990,17 @@ export default function EmployeeDashboard() {
                         >
                           <div className="flex items-center justify-between gap-3 px-1">
                             <h4 className="text-xs font-black text-white uppercase tracking-widest">
-                              Application Pipeline — {selectedClientApps.filter(a => {
-                                const q = pipelineSearch.toLowerCase();
-                                return !q || a.company?.toLowerCase().includes(q) || a.role?.toLowerCase().includes(q) || a.status?.toLowerCase().includes(q) || a.location?.toLowerCase().includes(q);
-                              }).length} {selectedClientApps.length > 0 && pipelineSearch ? `of ${selectedClientApps.length}` : selectedClientApps.length === 1 ? 'Application' : 'Applications'}
+                              Application Pipeline — {selectedClientApps.length} {selectedClientApps.length === 1 ? 'Application' : 'Applications'}
                             </h4>
+                            <select
+                              value={pipelineSort}
+                              onChange={e => setPipelineSort(e.target.value as any)}
+                              className="text-[9px] font-black uppercase tracking-widest bg-slate-800 border border-slate-700 text-slate-300 rounded-lg px-2.5 py-1.5 cursor-pointer outline-none focus:border-cyan-500/50"
+                            >
+                              <option value="latest">Latest First</option>
+                              <option value="oldest">Oldest First</option>
+                              <option value="az">A → Z (Company)</option>
+                            </select>
                           </div>
 
                           {/* Search bar */}
@@ -1034,18 +1027,21 @@ export default function EmployeeDashboard() {
                             </div>
                           ) : selectedClientApps.length > 0 ? (
                             <div className="space-y-3">
-                              {selectedClientApps.filter(a => {
+                              {(() => {
                                 const q = pipelineSearch.toLowerCase();
-                                return !q || a.company?.toLowerCase().includes(q) || a.role?.toLowerCase().includes(q) || a.status?.toLowerCase().includes(q) || a.location?.toLowerCase().includes(q);
-                              }).length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
-                                  <Search className="w-8 h-8 text-slate-700" />
-                                  <p className="text-slate-500 uppercase font-bold text-[11px] tracking-widest">No results for "{pipelineSearch}"</p>
-                                </div>
-                              ) : selectedClientApps.filter(a => {
-                                const q = pipelineSearch.toLowerCase();
-                                return !q || a.company?.toLowerCase().includes(q) || a.role?.toLowerCase().includes(q) || a.status?.toLowerCase().includes(q) || a.location?.toLowerCase().includes(q);
-                              }).map(app => (
+                                const sorted = [...selectedClientApps].sort((a, b) => {
+                                  if (pipelineSort === 'az')     return (a.company || '').localeCompare(b.company || '');
+                                  if (pipelineSort === 'oldest') return new Date(a.updatedAt || a.createdAt).getTime() - new Date(b.updatedAt || b.createdAt).getTime();
+                                  return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime();
+                                });
+                                const filtered = sorted.filter(a => !q || a.company?.toLowerCase().includes(q) || a.role?.toLowerCase().includes(q) || a.status?.toLowerCase().includes(q) || a.location?.toLowerCase().includes(q));
+                                if (filtered.length === 0) return (
+                                  <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
+                                    <Search className="w-8 h-8 text-slate-700" />
+                                    <p className="text-slate-500 uppercase font-bold text-[11px] tracking-widest">{q ? `No results for "${pipelineSearch}"` : 'No applications'}</p>
+                                  </div>
+                                );
+                                return filtered.map(app => (
                                 <div key={app.id} className={cn(
                                   "p-5 border rounded-2xl flex items-center justify-between gap-4 shadow-xl",
                                   app.status === 'Applied'    ? 'bg-slate-900 border-blue-500/30' :
@@ -1133,7 +1129,8 @@ export default function EmployeeDashboard() {
                                     </button>
                                   </div>
                                 </div>
-                              ))}
+                              ));
+                              })()}
                             </div>
                           ) : (
                             <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">

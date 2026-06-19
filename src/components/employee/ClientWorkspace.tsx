@@ -202,7 +202,7 @@ export const ClientWorkspace: React.FC<ClientWorkspaceProps> = ({ clientId, onDe
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
       const newJob = await res.json();
-      setApplications(prev => [newJob, ...prev]);
+      setApplications(prev => [{ ...newJob, updatedAt: new Date().toISOString() }, ...prev]);
       setCompany(''); setRole(''); setLocation(''); setSalary(''); setJobUrl('');
       toast.success("Application logged successfully!");
     } catch (err: any) {
@@ -231,12 +231,20 @@ export const ClientWorkspace: React.FC<ClientWorkspaceProps> = ({ clientId, onDe
         body: JSON.stringify({ status })
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
-      setApplications(prev => prev.map(a => a.id === appId ? { ...a, status } : a));
+      setApplications(prev => prev.map(a => a.id === appId ? { ...a, status, updatedAt: new Date().toISOString() } : a));
       toast.success(`Status updated to ${status}`);
     } catch (err: any) {
       toast.error("Failed to update status: " + err.message);
     }
   };
+
+  const [sortBy, setSortBy] = useState<'latest' | 'oldest' | 'az'>('latest');
+
+  const sortedApplications = [...applications].sort((a, b) => {
+    if (sortBy === 'az')     return (a.company || '').localeCompare(b.company || '');
+    if (sortBy === 'oldest') return new Date(a.updatedAt || a.createdAt).getTime() - new Date(b.updatedAt || b.createdAt).getTime();
+    return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime();
+  });
 
   const [isConfirmingPurge, setIsConfirmingPurge] = useState(false);
 
@@ -519,6 +527,16 @@ export const ClientWorkspace: React.FC<ClientWorkspaceProps> = ({ clientId, onDe
                 <div className="flex items-center gap-6">
                   <h4 className="text-xs font-black text-gray-900 uppercase tracking-[0.2em]">Past Applications</h4>
                   <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full font-mono">{applications.length} Total Applied</span>
+                  {/* Sort control */}
+                  <select
+                    value={sortBy}
+                    onChange={e => setSortBy(e.target.value as any)}
+                    className="text-[10px] font-black uppercase tracking-widest border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-600 cursor-pointer outline-none focus:border-blue-400"
+                  >
+                    <option value="latest">Latest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="az">A → Z (Company)</option>
+                  </select>
                 </div>
                 <div className="flex gap-6">
                   {['Applied', 'Interview', 'Assessment', 'Selected', 'Rejected'].map(s => (
@@ -535,7 +553,7 @@ export const ClientWorkspace: React.FC<ClientWorkspaceProps> = ({ clientId, onDe
 
              <div className="flex-1 overflow-y-auto custom-scrollbar p-10 bg-gray-50/30">
                 <div className="grid grid-cols-1 gap-4">
-                  {applications.map((app, idx) => (
+                  {sortedApplications.map((app, idx) => (
                     <div 
                       key={app.id} 
                       className="group flex items-center justify-between p-6 bg-white border border-gray-200 hover:border-blue-300 hover:shadow-xl hover:shadow-blue-500/5 rounded-3xl transition-all shadow-sm"
