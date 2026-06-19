@@ -431,33 +431,36 @@ app.post("/api/parse-job-url", async (req: any, res: any) => {
 if (!process.env.VERCEL) {
   (async () => {
     try {
-      // Initialize Prisma with pg adapter BEFORE accepting requests.
-      // engineType = "wasm" in schema.prisma means no Rust binary engine —
-      // no Tokio timer, no "PANIC: timer has gone away" on Node.js v24.
+      // engineType = "wasm" in schema.prisma — no Rust binary, no Tokio timer panic.
+      // Pool/adapter/PrismaClient creation is synchronous (no real connection yet),
+      // so we create them first and call app.listen() immediately after.
+      // Actual DB connection happens lazily on first query.
       const dbUrl = process.env.DATABASE_URL;
       console.log('[db] DATABASE_URL:', dbUrl ? dbUrl.slice(0, 50) + '...' : 'NOT FOUND');
-      if (!dbUrl) throw new Error('DATABASE_URL not found in process.env — check Hostinger env vars');
+      if (!dbUrl) throw new Error('DATABASE_URL not found — set it in Hostinger environment variables');
       const { default: pg } = await import('pg') as any;
-      // @ts-ignore — package exists at runtime, types not needed here
+      // @ts-ignore — package exists at runtime
       const { PrismaPg } = await import('@prisma/adapter-pg') as any;
       const pool = new pg.Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
       const adapter = new PrismaPg(pool);
       prisma = new PrismaClient({ adapter } as any);
-      await prisma.$queryRaw`SELECT 1`;
-      console.log('[db] wasm engine + @prisma/adapter-pg ready');
+      console.log('[db] wasm engine + @prisma/adapter-pg configured');
 
+      // Start listening before verifying DB — Neon cold-start can take seconds
       const PORT = parseInt(process.env.PORT || '3000', 10);
-      console.log("🔌 Binding to port", PORT);
-
       const distPath = path.join(process.cwd(), "dist");
       app.use(express.static(distPath));
       app.get("*", (_req, res) => {
         res.sendFile(path.join(distPath, "index.html"));
       });
-
       app.listen(PORT, "0.0.0.0", () => {
         console.log(`✅ Server running on http://localhost:${PORT}`);
       });
+
+      // Verify DB connection in background — doesn't block startup
+      prisma.$queryRaw`SELECT 1`
+        .then(() => console.log('[db] connection verified'))
+        .catch((e: any) => console.error('[db] verify failed:', e.message));
     } catch (e) {
       console.error("❌ Server failed to start:", e);
       process.exit(1);
