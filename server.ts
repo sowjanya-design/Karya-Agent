@@ -11,7 +11,6 @@ import bcrypt from "bcrypt";
 import cors from "cors";
 
 // Load .env from both project root and prisma/ subdirectory.
-// On Hostinger, Prisma writes the env to prisma/.env so dotenv misses it.
 dotenv.config();
 dotenv.config({ path: path.join(process.cwd(), 'prisma', '.env') });
 dotenv.config({ path: path.join(process.cwd(), '..', '.env') });
@@ -19,44 +18,8 @@ dotenv.config({ path: path.join(process.cwd(), '..', '.env') });
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Standard PrismaClient as initial fallback — server always starts.
-let prisma = new PrismaClient();
-
-// After PrismaClient init its internal env load may have populated DATABASE_URL.
-// Try to upgrade to @prisma/adapter-pg (standard TCP) which bypasses the
-// Prisma binary engine entirely — no more "timer has gone away" panics.
-void (async () => {
-  try {
-    const dbUrl = process.env.DATABASE_URL;
-    console.log('[db] DATABASE_URL:', dbUrl ? dbUrl.slice(0, 50) + '...' : 'NOT FOUND');
-    if (!dbUrl) throw new Error('DATABASE_URL not in process.env');
-
-    const [{ default: pg }, { PrismaPg }] = await Promise.all([
-      import('pg') as any,
-      import('@prisma/adapter-pg') as any,
-    ]);
-    const pool    = new pg.Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
-    const adapter = new PrismaPg(pool);
-    const next    = new PrismaClient({ adapter } as any);
-    await next.$queryRaw`SELECT 1`;   // verify it actually works before swapping
-    await prisma.$disconnect();
-    prisma = next;
-    console.log('[db] @prisma/adapter-pg active — binary engine bypassed');
-  } catch (e: any) {
-    console.warn('[db] pg adapter skipped, using binary engine:', e.message);
-    // Keepalive to prevent Neon compute suspend (5-min free-tier threshold)
-    const t = setInterval(async () => {
-      try { await prisma.$queryRaw`SELECT 1`; }
-      catch (e2: any) {
-        if (String(e2?.message).includes('PANIC') || String(e2?.message).includes('timer')) {
-          prisma.$disconnect().catch(() => {});
-          prisma = new PrismaClient();
-        }
-      }
-    }, 2 * 60 * 1000);
-    t.unref();
-  }
-})();
+// wasm engine requires a driver adapter — assigned in the startup IIFE before app.listen()
+let prisma: PrismaClient = null!;
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
 
@@ -468,6 +431,21 @@ app.post("/api/parse-job-url", async (req: any, res: any) => {
 if (!process.env.VERCEL) {
   (async () => {
     try {
+      // Initialize Prisma with pg adapter BEFORE accepting requests.
+      // engineType = "wasm" in schema.prisma means no Rust binary engine —
+      // no Tokio timer, no "PANIC: timer has gone away" on Node.js v24.
+      const dbUrl = process.env.DATABASE_URL;
+      console.log('[db] DATABASE_URL:', dbUrl ? dbUrl.slice(0, 50) + '...' : 'NOT FOUND');
+      if (!dbUrl) throw new Error('DATABASE_URL not found in process.env — check Hostinger env vars');
+      const { default: pg } = await import('pg') as any;
+      // @ts-ignore — package exists at runtime, types not needed here
+      const { PrismaPg } = await import('@prisma/adapter-pg') as any;
+      const pool = new pg.Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+      const adapter = new PrismaPg(pool);
+      prisma = new PrismaClient({ adapter } as any);
+      await prisma.$queryRaw`SELECT 1`;
+      console.log('[db] wasm engine + @prisma/adapter-pg ready');
+
       const PORT = parseInt(process.env.PORT || '3000', 10);
       console.log("🔌 Binding to port", PORT);
 
