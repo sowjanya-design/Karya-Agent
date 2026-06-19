@@ -41,7 +41,8 @@ import {
   Award,
   Calendar,
   CalendarDays,
-  CalendarRange
+  CalendarRange,
+  CreditCard
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -995,6 +996,9 @@ export default function AdminDashboard() {
                               <div className="space-y-4">
                                 <DetailRow label="Email Address" value={selectedClient.email || appData.email} icon={<Mail className="w-4 h-4" />} />
                                 <DetailRow label="Phone Number" value={appData.phone} icon={<Phone className="w-4 h-4" />} />
+                                <DetailRow label="Date of Birth" value={appData.dob} icon={<Calendar className="w-4 h-4" />} />
+                                <DetailRow label="Aadhar Number" value={appData.aadharNumber} icon={<CreditCard className="w-4 h-4" />} />
+                                <DetailRow label="PAN Number" value={appData.panNumber} icon={<CreditCard className="w-4 h-4" />} />
                                 <DetailRow label="Preferred Job Location" value={appData.preferredLocation} icon={<MapPin className="w-4 h-4" />} />
                                 <DetailRow label="Target Job Roles" value={appData.targetRoles?.join(', ')} icon={<Target className="w-4 h-4" />} />
                               </div>
@@ -1037,12 +1041,22 @@ export default function AdminDashboard() {
                                 <p className="text-sm font-bold text-white uppercase tracking-wide leading-snug">
                                   {appData.education?.degree || 'No Degree Listed'}
                                 </p>
+                                {appData.education?.department && (
+                                  <p className="text-xs text-blue-400 font-black uppercase tracking-widest">
+                                    {appData.education.department}
+                                  </p>
+                                )}
                                 <p className="text-xs text-slate-400 font-mono">
                                   {appData.education?.college || 'No University/College'}
                                 </p>
                                 <p className="text-[10px] font-black text-cyan-400 uppercase tracking-widest mt-1">
                                   Class of {appData.education?.year || 'N/A'}
                                 </p>
+                                {appData.education?.cgpa && (
+                                  <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                                    CGPA / Score: {appData.education.cgpa}
+                                  </p>
+                                )}
                               </div>
                             </div>
 

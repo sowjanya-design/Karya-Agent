@@ -51,7 +51,9 @@ export const ProfileTab: React.FC = () => {
     workHistory: clientProfile?.application_data?.workHistory || '',
     degree: clientProfile?.application_data?.education?.degree || '',
     college: clientProfile?.application_data?.education?.college || '',
-    year: clientProfile?.application_data?.education?.year || ''
+    year: clientProfile?.application_data?.education?.year || '',
+    cgpa: clientProfile?.application_data?.education?.cgpa || '',
+    department: clientProfile?.application_data?.education?.department || ''
   });
 
   const [targetRoles, setTargetRoles] = useState<string[]>(clientProfile?.application_data?.targetRoles || []);
@@ -102,7 +104,9 @@ export const ProfileTab: React.FC = () => {
         education: {
           degree: formData.degree,
           college: formData.college,
-          year: formData.year
+          year: formData.year,
+          cgpa: formData.cgpa,
+          department: formData.department
         },
         targetRoles,
         updatedAt: new Date().toISOString()
@@ -351,25 +355,43 @@ export const ProfileTab: React.FC = () => {
           {/* Education Section */}
           <section className="space-y-6">
             <h4 className="text-label text-gray-400 border-b border-slate-100 pb-3">Education</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label className="text-[12px] font-medium text-gray-500 block">Highest Degree</label>
-                <input 
+                <input
                   type="text" name="degree" value={formData.degree} onChange={handleInputChange}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 transition-all"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[12px] font-medium text-gray-500 block">College/University</label>
-                <input 
+                <label className="text-[12px] font-medium text-gray-500 block">Department / Branch</label>
+                <input
+                  type="text" name="department" value={formData.department} onChange={handleInputChange}
+                  placeholder="E.g. Computer Science, ECE, MBA"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 transition-all"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[12px] font-medium text-gray-500 block">College / University</label>
+                <input
                   type="text" name="college" value={formData.college} onChange={handleInputChange}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 transition-all"
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-[12px] font-medium text-gray-500 block">Graduation Year</label>
-                <input 
+                <input
                   type="text" name="year" value={formData.year} onChange={handleInputChange}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 transition-all"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[12px] font-medium text-gray-500 flex items-center gap-2">
+                  <GraduationCap className="w-3 h-3" /> CGPA / Percentage
+                </label>
+                <input
+                  type="text" name="cgpa" value={formData.cgpa} onChange={handleInputChange}
+                  placeholder="E.g. 8.5 / 10 or 85%"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-4 focus:ring-blue-100 transition-all"
                 />
               </div>

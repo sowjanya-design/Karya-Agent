@@ -30,7 +30,8 @@ import {
   BriefcaseBusiness,
   Database,
   Sparkles,
-  GraduationCap
+  GraduationCap,
+  CreditCard
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
@@ -340,6 +341,10 @@ export const ClientWorkspace: React.FC<ClientWorkspaceProps> = ({ clientId, onDe
                 { label: 'Date of Birth', value: appData.dob, icon: Clock },
                 { label: 'Phone Number', value: appData.phone, icon: Phone },
                 { label: 'Email Address', value: clientDoc?.email || appData.email, icon: Globe },
+                { label: 'Aadhar Number', value: appData.aadharNumber, icon: CreditCard },
+                { label: 'PAN Number', value: appData.panNumber, icon: CreditCard },
+                { label: 'Department / Branch', value: appData.education?.department, icon: GraduationCap },
+                { label: 'CGPA / Percentage', value: appData.education?.cgpa, icon: GraduationCap },
                 { label: 'Current Company', value: appData.currentCompany, icon: Building },
                 { label: 'Skills / Expertise', value: appData.domain, icon: Briefcase },
                 { label: 'Total Experience', value: appData.experience, icon: Clock },
@@ -391,9 +396,15 @@ export const ClientWorkspace: React.FC<ClientWorkspaceProps> = ({ clientId, onDe
              <h4 className="text-xs font-black text-gray-900 uppercase tracking-widest flex items-center gap-2.5 border-b border-gray-200 pb-4">
               <GraduationCap className="w-4 h-4 text-purple-600" /> Education
             </h4>
-            <div className="p-4 bg-white border border-gray-200 rounded-2xl shadow-sm space-y-1">
+            <div className="p-4 bg-white border border-gray-200 rounded-2xl shadow-sm space-y-1.5">
               <p className="text-xs font-black text-gray-900 uppercase">{appData.education?.degree} // {appData.education?.college}</p>
+              {appData.education?.department && (
+                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">{appData.education.department}</p>
+              )}
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Class of {appData.education?.year}</p>
+              {appData.education?.cgpa && (
+                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">CGPA / Score: {appData.education.cgpa}</p>
+              )}
             </div>
           </section>
 
