@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { StatusDropdown } from '../ui/StatusDropdown';
 // Removed firebase
 import { 
   User,
@@ -598,28 +599,10 @@ export const ClientWorkspace: React.FC<ClientWorkspaceProps> = ({ clientId, onDe
                        </div>
 
                        <div className="flex items-center gap-6 ml-10">
-                        <div className="relative group/status">
-                          <select 
-                            value={app.status} 
-                            onChange={(e) => updateAppStatus(app.id, e.target.value)}
-                            className={cn(
-                              "appearance-none bg-gray-50 border border-gray-200 rounded-xl pl-4 pr-10 py-2.5 text-xs font-black uppercase tracking-widest focus:outline-none focus:ring-4 focus:ring-gray-200 cursor-pointer transition-all",
-                              app.status === 'Applied'    ? 'text-blue-600 border-blue-200 bg-blue-50' :
-                              app.status === 'Interview'  ? 'text-amber-600 border-amber-200 bg-amber-50' :
-                              app.status === 'Assessment' ? 'text-purple-600 border-purple-200 bg-purple-50' :
-                              app.status === 'Selected'   ? 'text-emerald-600 border-emerald-200 bg-emerald-50' :
-                              app.status === 'Rejected'   ? 'text-red-600 border-red-200 bg-red-50' :
-                              'text-gray-600 hover:text-gray-900 border-gray-200 bg-white'
-                            )}
-                          >
-                            <option value="Applied"    style={{background:'#dbeafe',color:'#1d4ed8'}}>Applied</option>
-                            <option value="Interview"  style={{background:'#fef3c7',color:'#b45309'}}>Interview</option>
-                            <option value="Assessment" style={{background:'#ede9fe',color:'#7c3aed'}}>Assessment</option>
-                            <option value="Selected"   style={{background:'#d1fae5',color:'#065f46'}}>Selected</option>
-                            <option value="Rejected"   style={{background:'#fee2e2',color:'#b91c1c'}}>Rejected</option>
-                          </select>
-                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                        </div>
+                        <StatusDropdown
+                          value={app.status}
+                          onChange={(val) => updateAppStatus(app.id, val)}
+                        />
                         <button 
                           onClick={() => handleDeleteApplication(app.id)}
                           className="p-3 text-gray-300 hover:text-red-600 transition-all rounded-2xl hover:bg-red-50"

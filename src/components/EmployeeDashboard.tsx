@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useUserRole, ClientProfile } from '../contexts/UserRoleContext';
+import { StatusDropdown } from './ui/StatusDropdown';
 import {
   Users,
   Loader2,
@@ -1098,28 +1099,10 @@ export default function EmployeeDashboard() {
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-3 border-l border-slate-800 pl-4 shrink-0">
-                                    <div className="relative">
-                                      <select
-                                        value={app.status}
-                                        onChange={e => updateAppStatus(app.id, e.target.value)}
-                                        className={cn(
-                                          "appearance-none border rounded-xl pl-4 pr-9 py-2 text-xs font-black uppercase tracking-wider cursor-pointer outline-none transition-all",
-                                          app.status === 'Applied'    ? 'text-blue-400 border-blue-500/30 bg-blue-500/10' :
-                                          app.status === 'Interview'  ? 'text-amber-400 border-amber-500/30 bg-amber-500/10' :
-                                          app.status === 'Assessment' ? 'text-purple-400 border-purple-500/30 bg-purple-500/10' :
-                                          app.status === 'Selected'   ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' :
-                                          app.status === 'Rejected'   ? 'text-red-400 border-red-500/30 bg-red-500/10' :
-                                          'text-slate-300 border-slate-800 bg-slate-950'
-                                        )}
-                                      >
-                                        <option value="Applied"    style={{background:'#1e3a5f',color:'#60a5fa'}}>Applied</option>
-                                        <option value="Interview"  style={{background:'#451a03',color:'#fbbf24'}}>Interview</option>
-                                        <option value="Assessment" style={{background:'#2e1065',color:'#c084fc'}}>Assessment</option>
-                                        <option value="Selected"   style={{background:'#052e16',color:'#34d399'}}>Selected</option>
-                                        <option value="Rejected"   style={{background:'#450a0a',color:'#f87171'}}>Rejected</option>
-                                      </select>
-                                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
-                                    </div>
+                                    <StatusDropdown
+                                      value={app.status}
+                                      onChange={val => updateAppStatus(app.id, val)}
+                                    />
                                     <button
                                       onClick={() => handleDeleteApplication(app.id)}
                                       className="p-2 bg-slate-950 hover:bg-red-500/20 text-slate-500 hover:text-red-400 border border-slate-800 rounded-xl transition-all"
