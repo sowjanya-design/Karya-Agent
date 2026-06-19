@@ -131,6 +131,7 @@ app.post("/api/auth/register", async (req, res) => {
 app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
   try {
+    if (!prisma) return res.status(503).json({ error: "Server starting up, please retry in a moment" });
     const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
     if (!user) return res.status(400).json({ error: "Invalid credentials" });
     const validPassword = await bcrypt.compare(password, (user as any).passwordHash);
@@ -430,40 +431,48 @@ app.post("/api/parse-job-url", async (req: any, res: any) => {
 // ============================================================
 if (!process.env.VERCEL) {
   (async () => {
+    const PORT = parseInt(process.env.PORT || '3000', 10);
+    const distPath = path.join(process.cwd(), "dist");
+
+    // Initialize DB with pg adapter (wasm engine — no Rust binary, no timer panic).
+    // Pool/adapter/PrismaClient constructors are synchronous — no DB connection yet.
+    // Actual connection is lazy (first query). If init fails, server still starts
+    // and routes return proper JSON errors instead of crashing to HTML.
     try {
-      // engineType = "wasm" in schema.prisma — no Rust binary, no Tokio timer panic.
-      // Pool/adapter/PrismaClient creation is synchronous (no real connection yet),
-      // so we create them first and call app.listen() immediately after.
-      // Actual DB connection happens lazily on first query.
       const dbUrl = process.env.DATABASE_URL;
       console.log('[db] DATABASE_URL:', dbUrl ? dbUrl.slice(0, 50) + '...' : 'NOT FOUND');
-      if (!dbUrl) throw new Error('DATABASE_URL not found — set it in Hostinger environment variables');
+      if (!dbUrl) throw new Error('DATABASE_URL not set');
       const { default: pg } = await import('pg') as any;
-      // @ts-ignore — package exists at runtime
+      // @ts-ignore
       const { PrismaPg } = await import('@prisma/adapter-pg') as any;
       const pool = new pg.Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
       const adapter = new PrismaPg(pool);
       prisma = new PrismaClient({ adapter } as any);
-      console.log('[db] wasm engine + @prisma/adapter-pg configured');
+      console.log('[db] wasm + pg adapter configured');
 
-      // Start listening before verifying DB — Neon cold-start can take seconds
-      const PORT = parseInt(process.env.PORT || '3000', 10);
-      const distPath = path.join(process.cwd(), "dist");
-      app.use(express.static(distPath));
-      app.get("*", (_req, res) => {
-        res.sendFile(path.join(distPath, "index.html"));
-      });
-      app.listen(PORT, "0.0.0.0", () => {
-        console.log(`✅ Server running on http://localhost:${PORT}`);
-      });
-
-      // Verify DB connection in background — doesn't block startup
+      // Warm up Neon immediately so first user login is instant instead of
+      // waiting 3-5s for the serverless compute to wake from sleep.
       prisma.$queryRaw`SELECT 1`
-        .then(() => console.log('[db] connection verified'))
-        .catch((e: any) => console.error('[db] verify failed:', e.message));
-    } catch (e) {
-      console.error("❌ Server failed to start:", e);
-      process.exit(1);
+        .then(() => {
+          console.log('[db] Neon warmed up');
+          // Keep Neon alive — it sleeps after 5 min of inactivity on free tier.
+          setInterval(() => {
+            prisma.$queryRaw`SELECT 1`.catch(() => {});
+          }, 4 * 60 * 1000).unref();
+        })
+        .catch((e: any) => console.error('[db] warm-up failed:', e.message));
+    } catch (e: any) {
+      console.error('[db] init failed, server still starting:', e.message);
+      // prisma stays null — routes will return 500 JSON, not crash the server
     }
+
+    // Start listening regardless of DB state.
+    app.use(express.static(distPath));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`✅ Server running on http://localhost:${PORT}`);
+    });
   })();
 }
