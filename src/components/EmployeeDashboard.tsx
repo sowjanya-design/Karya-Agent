@@ -91,10 +91,10 @@ export default function EmployeeDashboard() {
     const fetchClients = async () => {
       try {
         const token = localStorage.getItem('jwt_token');
+        // Single request — server already includes jobs via Prisma include
         const res = await fetch('/api/clients', { headers: { Authorization: `Bearer ${token}` } });
         if (!res.ok) return;
         const rawClients = await res.json();
-        // Normalize camelCase Prisma fields to snake_case expected by ClientProfile type
         const allClients = rawClients.map((c: any) => ({
           ...c,
           application_data: c.application_data ?? c.applicationData ?? {},
@@ -108,80 +108,49 @@ export default function EmployeeDashboard() {
         // Auto-select first matching client if none selected
         if (allClients.length > 0 && !selectedClientId) {
           const matches = allClients.filter((c: any) => {
-            if (!isAdmin && employeeId) {
-              return c.assignedEmployeeId === employeeId && c.status !== 'pending_approval' && c.status;
-            }
+            if (!isAdmin && employeeId) return c.assignedEmployeeId === employeeId && c.status !== 'pending_approval' && c.status;
             return c.status !== 'pending_approval' && c.status;
           });
-          if (matches.length > 0) {
-            setSelectedClientId((matches[0] as any).uid || matches[0].id);
-          } else if (allClients.length > 0) {
-            setSelectedClientId((allClients[0] as any).uid || allClients[0].id);
-          }
+          const first = matches[0] || allClients[0];
+          setSelectedClientId((first as any).uid || first.id);
         }
+
+        // Derive allClientApps from embedded jobs — no extra requests
+        const assignedClients = allClients.filter((c: any) => {
+          if (!isAdmin && employeeId) return c.assignedEmployeeId === employeeId;
+          return true;
+        }).filter((c: any) => c.status !== 'pending_approval' && c.status);
+
+        const appsFlat = assignedClients.flatMap((c: any) => {
+          const cid = c.uid || c.id;
+          const name = `${c.application_data?.firstName || ''} ${c.application_data?.lastName || ''}`.trim() || c.email || cid;
+          return (c.jobs || []).map((a: any) => ({ ...a, clientName: name, clientId: cid }));
+        });
+        setAllClientApps(appsFlat);
       } catch (err) {
         if (isMounted) setLoading(false);
       }
     };
-    
+
     fetchClients();
-    const interval = setInterval(fetchClients, 15000);
-    return () => { isMounted = false; clearInterval(interval); };
-  }, [user, isAuthorized, selectedClientId]);
+    // No polling — data only reloaded when user switches candidates
+    return () => { isMounted = false; };
+  }, [user, isAuthorized]);
 
-  // 1b. Fetch all apps for assigned clients (used in Interviews view)
-  useEffect(() => {
-    if (!user || !isAuthorized || clients.length === 0) return;
-    let isMounted = true;
-    const fetchAll = async () => {
-      try {
-        const token = localStorage.getItem('jwt_token');
-        const assignedClients = clients.filter(c => {
-          if (!isAdmin && employeeId) return c.assigned_employee_id === employeeId;
-          return true;
-        }).filter(c => c.status !== 'pending_approval' && c.status);
-        const appsArrays = await Promise.all(
-          assignedClients.map(async c => {
-            const cid = (c as any).uid || c.id;
-            const res = await fetch(`/api/jobs/${cid}`, { headers: { Authorization: `Bearer ${token}` } });
-            if (!res.ok) return [];
-            const apps = await res.json();
-            const name = `${c.application_data?.firstName || ''} ${c.application_data?.lastName || ''}`.trim() || c.email || cid;
-            return apps.map((a: any) => ({ ...a, clientName: name, clientId: cid }));
-          })
-        );
-        if (isMounted) setAllClientApps(appsArrays.flat());
-      } catch {}
-    };
-    fetchAll();
-    const interval = setInterval(fetchAll, 30000);
-    return () => { isMounted = false; clearInterval(interval); };
-  }, [clients, user, isAuthorized, isAdmin, employeeId]);
-
-  // 2. Polling for Selected Candidate's Job Applications
+  // 2. Derive selected candidate's apps from already-loaded clients — no extra fetch
   useEffect(() => {
     if (!selectedClientId) { setSelectedClientApps([]); return; }
-
-    setSelectedClientApps([]);
-    let isMounted = true;
-    setIsLoadingApps(true);
-
-    fetch(`/api/jobs/${selectedClientId}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('jwt_token')}` }
-    })
-      .then(r => r.ok ? r.json() : [])
-      .then(apps => {
-        if (isMounted) setSelectedClientApps(
-          apps.sort((a: any, b: any) =>
-            new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
-          )
-        );
-      })
-      .catch(console.error)
-      .finally(() => { if (isMounted) setIsLoadingApps(false); });
-
-    return () => { isMounted = false; };
-  }, [selectedClientId]);
+    const client = clients.find((c: any) => (c as any).uid === selectedClientId || c.id === selectedClientId);
+    if (client) {
+      const apps = (client as any).jobs || [];
+      setSelectedClientApps(
+        [...apps].sort((a: any, b: any) =>
+          new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+        )
+      );
+      setIsLoadingApps(false);
+    }
+  }, [selectedClientId, clients]);
 
   if (!isAuthorized) {
     return (

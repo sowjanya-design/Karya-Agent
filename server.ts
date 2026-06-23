@@ -81,13 +81,9 @@ app.use('/api', (_req, res, next) => {
 // ALL API ROUTES
 // ============================================================
 
-app.get("/api/health", async (req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: "ok", db: "connected", timestamp: new Date().toISOString() });
-  } catch (e: any) {
-    res.status(500).json({ status: "error", db: "disconnected", detail: e?.message?.slice(0, 120) });
-  }
+app.get("/api/health", (_req, res) => {
+  // Lightweight — no DB hit. DB status tracked separately via keepalive.
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
 app.get("/api/debug/env", (req, res) => {
@@ -187,7 +183,7 @@ app.get("/api/clients", authenticateToken, async (req: any, res: any) => {
   try {
     if (req.user.role === 'client') return res.status(403).json({ error: "Forbidden" });
     const filter = req.user.role === 'employee' ? { assignedEmployeeId: req.user.uid } : {};
-    const clients = await prisma.client.findMany({ where: filter, include: { jobs: true } });
+    const clients = await prisma.client.findMany({ where: filter, include: { jobs: { orderBy: { updatedAt: 'desc' } } } });
     const uids = clients.map((c: any) => c.uid);
     const users = await prisma.user.findMany({ where: { uid: { in: uids } }, select: { uid: true, email: true, displayName: true } });
     const userMap: Record<string, any> = {};

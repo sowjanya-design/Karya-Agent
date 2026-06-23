@@ -126,10 +126,18 @@ export default function AdminDashboard() {
     const fetchClients = async () => {
       try {
         const token = localStorage.getItem('jwt_token');
-        const res = await fetch('/api/clients', { headers: { Authorization: `Bearer ${token}` } });
-        if (!res.ok) throw new Error('Failed to fetch clients');
-        const rawList = await res.json();
-        // Normalize camelCase Prisma fields → snake_case expected by render code
+        // Single request — server already includes jobs via Prisma include
+        const [clientsRes, counselorsRes] = await Promise.all([
+          fetch('/api/clients', { headers: { Authorization: `Bearer ${token}` } }),
+          user?.role === 'admin'
+            ? fetch('/api/users/counselors', { headers: { Authorization: `Bearer ${token}` } })
+            : Promise.resolve(null),
+        ]);
+
+        if (!clientsRes.ok) throw new Error('Failed to fetch clients');
+        const rawList = await clientsRes.json();
+        if (counselorsRes?.ok) setCounselors(await counselorsRes.json());
+
         const clientList = rawList.map((c: any) => ({
           ...c,
           application_data: c.application_data ?? c.applicationData ?? {},
@@ -138,62 +146,41 @@ export default function AdminDashboard() {
 
         if (!isMounted) return;
         setClients(clientList);
-        setLoading(false);
 
         // Auto-select first non-incomplete client if none selected
         if (clientList.length > 0 && !selectedClientId) {
           const approvedClients = clientList.filter((c: any) => c.status !== 'incomplete' && c.status !== 'pending_approval');
-          if (approvedClients.length > 0) {
-            setSelectedClientId(approvedClients[0].uid || approvedClients[0].id);
-          } else {
-            setSelectedClientId(clientList[0].uid || clientList[0].id);
-          }
+          const first = approvedClients[0] || clientList[0];
+          setSelectedClientId(first.uid || first.id);
         }
 
+        // Derive stats & global apps from embedded jobs — zero extra requests
         let applied = 0, interviews = 0, appliedToday = 0;
         const stats: Record<string, any> = {};
         const allApps: any[] = [];
         const today = new Date().toISOString().split('T')[0];
-        
+
         for (const client of clientList) {
           const cid = client.uid || client.id;
-          const jobsRes = await fetch(`/api/jobs/${cid}`, { headers: { Authorization: `Bearer ${token}` } });
-          const trackersSnap = jobsRes.ok ? await jobsRes.json() : [];
-          
+          const trackersSnap: any[] = client.jobs || [];
           const cStats = { applied: 0, interviews: 0, selected: 0 };
+          const appData = client.application_data || client.applicationData || {};
+          const clientName = `${appData.firstName || ''} ${appData.lastName || ''}`.trim() || client.email || cid;
 
           trackersSnap.forEach((data: any) => {
-            const appData = client.application_data || client.applicationData || {};
-            const clientName = `${appData.firstName || ''} ${appData.lastName || ''}`.trim() || client.email || cid;
-            const app = { ...data, clientName, clientId: cid };
-            allApps.push(app);
-
+            allApps.push({ ...data, clientName, clientId: cid });
             if (data.status === 'Applied') { applied++; cStats.applied++; }
             if (data.status === 'Interview') { interviews++; cStats.interviews++; }
             if (data.status === 'Selected') cStats.selected++;
             if (data.appliedDate === today) appliedToday++;
           });
-
           stats[cid] = cStats;
         }
-        
-        setClientStats(stats);
-        setGlobalApps(allApps.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-        setGlobalStats({
-          totalApplied: applied,
-          totalCandidates: clientList.length,
-          totalInterviews: interviews,
-          appliedToday
-        });
 
-        if (user?.role === 'admin') {
-          const cRes = await fetch('/api/users/counselors', { headers: { Authorization: `Bearer ${token}` } });
-          if (cRes.ok) {
-            setCounselors(await cRes.json());
-          }
-        }
-        
-        if (isMounted) setLoading(false);
+        setClientStats(stats);
+        setGlobalApps(allApps.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        setGlobalStats({ totalApplied: applied, totalCandidates: clientList.length, totalInterviews: interviews, appliedToday });
+        setLoading(false);
       } catch (err) {
         console.error("Fetch error:", err);
         if (isMounted) setLoading(false);
@@ -201,36 +188,21 @@ export default function AdminDashboard() {
     };
 
     fetchClients();
-    const interval = setInterval(fetchClients, 15000);
-    return () => { isMounted = false; clearInterval(interval); };
-  }, [user, isAuthorized, selectedClientId]);
+    // No polling — only fetch once on mount; manual refresh happens on user actions
+    return () => { isMounted = false; };
+  }, [user, isAuthorized]);
 
-  // 2. Polling Listener for Selected Client Applications
+  // 2. Derive selected client apps from already-loaded clients (no extra fetch)
   useEffect(() => {
-    if (!selectedClientId) {
-      setSelectedClientApps([]);
-      return;
+    if (!selectedClientId) { setSelectedClientApps([]); return; }
+    const client = clients.find((c: any) => (c.uid || c.id) === selectedClientId);
+    if (client) {
+      const apps = (client as any).jobs || [];
+      setSelectedClientApps(
+        [...apps].sort((a: any, b: any) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime())
+      );
     }
-    
-    let isMounted = true;
-    const fetchApps = async () => {
-      try {
-        const token = localStorage.getItem('jwt_token');
-        const res = await fetch(`/api/jobs/${selectedClientId}`, { headers: { Authorization: `Bearer ${token}` } });
-        if (!res.ok) return;
-        const apps = await res.json();
-        if (isMounted) {
-          setSelectedClientApps(apps.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    
-    fetchApps();
-    const interval = setInterval(fetchApps, 10000);
-    return () => { isMounted = false; clearInterval(interval); };
-  }, [selectedClientId]);
+  }, [selectedClientId, clients]);
 
   const handleStatusUpdate = async (clientUid: string, status: string, forcedAssignId?: string) => {
     try {
