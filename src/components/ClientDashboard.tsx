@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useUserRole } from '../contexts/UserRoleContext';
+import { LoginBanner } from './ui/LoginBanner';
 import { 
   LayoutDashboard, 
   User, 
@@ -115,6 +116,12 @@ export default function ClientDashboard() {
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto bg-slate-50 relative">
+        <LoginBanner
+          role="client"
+          userName={user?.displayName || user?.email || ''}
+          token={localStorage.getItem('jwt_token')}
+          clientUid={(user as any)?.uid || (user as any)?.id}
+        />
         {/* Header */}
         <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">

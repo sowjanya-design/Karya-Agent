@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useUserRole, ClientProfile } from '../contexts/UserRoleContext';
 import { StatusDropdown } from './ui/StatusDropdown';
+import { LoginBanner } from './ui/LoginBanner';
 import {
   Users,
   Loader2,
@@ -45,6 +46,8 @@ import { cn } from '../lib/utils';
 export default function EmployeeDashboard() {
   const { user, logout } = useUserRole();
   const [activeView, setActiveView] = useState<'roster' | 'stats' | 'interviews'>('roster');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<'list' | 'detail'>('list');
   const [interviewsFilter, setInterviewsFilter] = useState<'day' | 'week' | 'month'>('week');
   const [allClientApps, setAllClientApps] = useState<any[]>([]);
   const [clients, setClients] = useState<ClientProfile[]>([]);
@@ -360,20 +363,35 @@ export default function EmployeeDashboard() {
   const appData = selectedClient?.application_data || {};
 
   return (
-    <div className="h-screen w-screen bg-slate-50 text-slate-900 font-sans karya-dashboard-theme overflow-hidden flex">
+    <div className="h-screen w-screen bg-slate-50 text-slate-900 font-sans karya-dashboard-theme overflow-hidden flex flex-col">
 
-      {/* COLUMN 1: LEFT NAVIGATION (Smallest Width) */}
-      <aside className="w-64 bg-white border-r border-slate-100 flex flex-col shrink-0">
+      {/* Interview notification banner */}
+      <LoginBanner
+        role="employee"
+        userName={user?.displayName || user?.email || ''}
+        token={localStorage.getItem('jwt_token')}
+      />
+
+      <div className="flex flex-1 overflow-hidden min-h-0">
+
+      {/* Mobile nav overlay */}
+      {mobileNavOpen && (
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileNavOpen(false)} />
+      )}
+
+      {/* COLUMN 1: LEFT NAVIGATION */}
+      <aside className={`${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:relative inset-y-0 left-0 w-64 bg-white border-r border-slate-100 flex flex-col shrink-0 z-50 transition-transform duration-300`}>
 
         {/* Brand Logo */}
-        <div className="p-6 border-b border-slate-100 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 font-black text-sm">
-            K
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 font-black text-sm">K</div>
+            <div>
+              <h1 className="text-xl font-black text-indigo-600 tracking-tight leading-none font-display">KARYA</h1>
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mt-1 block">Consultant Space</span>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-black text-indigo-600 tracking-tight leading-none font-display">KARYA</h1>
-            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mt-1 block">Consultant Space</span>
-          </div>
+          <button onClick={() => setMobileNavOpen(false)} className="lg:hidden p-1.5 text-slate-400 hover:text-slate-700">✕</button>
         </div>
 
         {/* Navigation Tabs */}
@@ -444,7 +462,14 @@ export default function EmployeeDashboard() {
 
       {/* RENDER VIEW 1: STATS OVERVIEW */}
       {activeView === 'stats' && (
-        <main className="flex-1 overflow-y-auto bg-slate-50 p-8 space-y-8 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto bg-slate-50 p-4 lg:p-8 space-y-8 custom-scrollbar">
+          {/* Mobile hamburger */}
+          <div className="flex items-center gap-3 lg:hidden">
+            <button onClick={() => setMobileNavOpen(true)} className="p-2 bg-white border border-slate-200 rounded-lg">
+              <span className="text-lg leading-none">☰</span>
+            </button>
+            <span className="font-black text-slate-700 text-sm uppercase tracking-widest">Overview</span>
+          </div>
           
           <div className="space-y-1">
             <h2 className="text-2xl font-black text-white tracking-tight">System Metrics Overview</h2>
@@ -529,7 +554,13 @@ export default function EmployeeDashboard() {
         });
 
         return (
-          <main className="flex-1 overflow-y-auto bg-slate-50 p-8 space-y-8 custom-scrollbar">
+          <main className="flex-1 overflow-y-auto bg-slate-50 p-4 lg:p-8 space-y-8 custom-scrollbar">
+            <div className="flex items-center gap-3 lg:hidden mb-2">
+              <button onClick={() => setMobileNavOpen(true)} className="p-2 bg-white border border-slate-200 rounded-lg">
+                <span className="text-lg leading-none">☰</span>
+              </button>
+              <span className="font-black text-slate-700 text-sm uppercase tracking-widest">Interviews</span>
+            </div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-black text-slate-800 tracking-tight">Interviews</h2>
@@ -644,15 +675,16 @@ export default function EmployeeDashboard() {
       {/* RENDER DUAL VIEWS: ROSTER */}
       {(activeView === 'roster') && (
         <div className="flex-1 flex overflow-hidden min-h-0">
-          
-          {/* COLUMN 2: CANDIDATE LIST (Medium Width) */}
-          <aside className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0">
-            
-            <div className="p-6 border-b border-slate-800 bg-slate-900 space-y-4">
+
+          {/* COLUMN 2: CANDIDATE LIST — hidden on mobile when detail is open */}
+          <aside className={`${mobilePanel === 'detail' ? 'hidden lg:flex' : 'flex'} w-full lg:w-80 bg-slate-900 border-r border-slate-800 flex-col shrink-0`}>
+
+            <div className="p-4 lg:p-6 border-b border-slate-800 bg-slate-900 space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-white uppercase tracking-widest">
-                  {activeView === 'roster' ? 'Candidate Profiles' : 'Awaiting Approval'}
-                </span>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setMobileNavOpen(true)} className="lg:hidden p-1.5 bg-slate-800 rounded-lg text-slate-400">☰</button>
+                  <span className="text-xs font-black text-white uppercase tracking-widest">Candidate Profiles</span>
+                </div>
                 <span className="text-[10px] bg-cyan-500/10 text-cyan-400 font-bold px-2 py-0.5 rounded-full font-mono">
                   {filteredCandidates.length}
                 </span>
@@ -689,7 +721,7 @@ export default function EmployeeDashboard() {
                       <motion.button
                         key={candidate.id}
                         layoutId={`candidate-${candidate.id}`}
-                        onClick={() => setSelectedClientId(candidateKey)}
+                        onClick={() => { setSelectedClientId(candidateKey); setMobilePanel('detail'); }}
                         className={cn(
                           "w-full text-left p-4 rounded-xl transition-all border shrink-0 text-slate-200",
                           isSelected 
@@ -732,14 +764,18 @@ export default function EmployeeDashboard() {
             </div>
           </aside>
 
-          {/* COLUMN 3: CANDIDATE DOSSIER (Largest Width) */}
-          <section className="flex-1 overflow-hidden bg-slate-950 flex flex-col">
+          {/* COLUMN 3: CANDIDATE DOSSIER — hidden on mobile when list is shown */}
+          <section className={`${mobilePanel === 'list' ? 'hidden lg:flex' : 'flex'} flex-1 overflow-hidden bg-slate-950 flex-col`}>
             {selectedClient ? (
               <div className="flex-1 flex flex-col h-full overflow-hidden">
-                
+
                 {/* Dossier Header */}
-                <div className="p-6 border-b border-slate-900 bg-slate-950 flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-4">
+                <div className="p-4 lg:p-6 border-b border-slate-900 bg-slate-950 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-3 lg:gap-4">
+                    {/* Mobile back button */}
+                    <button onClick={() => setMobilePanel('list')} className="lg:hidden p-2 bg-slate-800 rounded-xl text-slate-400 hover:text-white shrink-0">
+                      ←
+                    </button>
                     <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-black text-lg font-mono">
                       {appData.firstName?.[0] || 'C'}{appData.lastName?.[0] || 'K'}
                     </div>
@@ -1248,6 +1284,7 @@ export default function EmployeeDashboard() {
         )}
       </AnimatePresence>
 
+      </div> {/* end inner flex row */}
     </div>
   );
 }
