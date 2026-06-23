@@ -53,7 +53,7 @@ interface UserRoleContextType {
   setRole: (role: UserRole) => Promise<void>;
   updateClientIntake: (data: Partial<ApplicationData>, masterResumeUrl?: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
-  login: (token: string, user: any) => void;
+  login: (token: string, user: any, clientProfile?: any) => void;
   logout: () => void;
 }
 
@@ -116,10 +116,27 @@ export function UserRoleProvider({ children }: { children: React.ReactNode }) {
     fetchProfileData();
   }, []);
 
-  const login = (token: string, userData: any) => {
+  const login = (token: string, userData: any, clientProfileData?: any) => {
     localStorage.setItem('jwt_token', token);
     setUser(userData);
-    fetchProfileData();
+    setUserProfile({
+      uid: userData.uid,
+      email: userData.email,
+      role: userData.role as UserRole,
+      assigned_clients: userData.assignedClients || []
+    });
+    if (clientProfileData) {
+      setClientProfile({
+        id: clientProfileData.uid,
+        assigned_employee_id: clientProfileData.assignedEmployeeId || 'default_employee',
+        status: clientProfileData.status,
+        application_data: clientProfileData.applicationData || {},
+        master_resume_storage_url: clientProfileData.masterResumeStorageUrl,
+        onboardingSkipped: clientProfileData.onboardingSkipped,
+        createdAt: clientProfileData.createdAt
+      });
+    }
+    setLoading(false);
   };
 
   const logout = () => {

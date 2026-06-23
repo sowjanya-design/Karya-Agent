@@ -113,7 +113,7 @@ export default function Auth() {
           return;
         }
 
-        login(data.token, data.user);
+        login(data.token, data.user, data.clientProfile);
         toast.success(`Authentication Successful`);
       }
     } catch (error: any) {

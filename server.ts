@@ -106,7 +106,7 @@ app.post("/api/auth/register", async (req, res) => {
     if (role === 'admin' || role === 'employee') {
       return res.status(403).json({ error: "Cannot register as admin or employee directly." });
     }
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 8);
     const uid = "usr_" + Math.random().toString(36).substring(2, 11);
     const userRole = 'client';
     const isApproved = false;
@@ -137,7 +137,12 @@ app.post("/api/auth/login", async (req, res) => {
     const validPassword = await bcrypt.compare(password, (user as any).passwordHash);
     if (!validPassword) return res.status(400).json({ error: "Invalid credentials" });
     const token = jwt.sign({ uid: user.uid, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user });
+    // Fetch clientProfile in parallel so frontend doesn't need a second /me call
+    let clientProfile = null;
+    if ((user as any).role === 'client') {
+      clientProfile = await prisma.client.findUnique({ where: { uid: (user as any).uid } });
+    }
+    res.json({ token, user, clientProfile });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -246,7 +251,7 @@ app.post("/api/setup/seed-admin", async (req: any, res: any) => {
   const { secret, email, password, displayName } = req.body;
   if (secret !== process.env.SETUP_SECRET) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const hash = await bcrypt.hash(password, 10);
+    const hash = await bcrypt.hash(password, 8);
     const uid = 'admin_' + Math.random().toString(36).substring(2, 6);
     const user = await prisma.user.upsert({
       where: { email: email.toLowerCase() },
@@ -262,7 +267,7 @@ app.post("/api/admin/create-user", authenticateToken, async (req: any, res: any)
   const { email, displayName, role, password } = req.body;
   if (role === 'admin') return res.status(403).json({ error: "Admin accounts cannot be created dynamically." });
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 8);
     const uid = "pre_" + Math.random().toString(36).substring(2, 11);
     const user = await prisma.user.create({
       data: { uid, email: email.toLowerCase(), displayName, role, isApproved: true, passwordHash: hashedPassword }
@@ -326,7 +331,7 @@ app.post("/api/users/counselor", authenticateToken, async (req: any, res: any) =
     const newIdNum = maxId > 0 ? maxId + 1 : 3;
     const newUid = newIdNum.toString().padStart(2, '0');
     const finalPassword = password || ("Couns@" + Math.random().toString(36).substring(2, 8).toUpperCase() + newUid);
-    const hashedPassword = await bcrypt.hash(finalPassword, 10);
+    const hashedPassword = await bcrypt.hash(finalPassword, 8);
     const user = await prisma.user.create({
       data: { uid: newUid, email: email.toLowerCase(), displayName, role: 'employee', isApproved: true, passwordHash: hashedPassword }
     });
@@ -458,7 +463,7 @@ if (!process.env.VERCEL) {
           // Keep Neon alive — it sleeps after 5 min of inactivity on free tier.
           setInterval(() => {
             prisma.$queryRaw`SELECT 1`.catch(() => {});
-          }, 4 * 60 * 1000).unref();
+          }, 3.5 * 60 * 1000).unref();
         })
         .catch((e: any) => console.error('[db] warm-up failed:', e.message));
     } catch (e: any) {
