@@ -113,6 +113,7 @@ export default function Auth() {
           body: JSON.stringify({ email: cleanEmail, password }),
         });
         // Auto-retry once if server reports DB cold-start
+        let data: any;
         if (res.status === 500) {
           const err = await res.json().catch(() => ({}));
           if ((err.error || '').includes('starting up') || (err.error || '').includes('timeout')) {
@@ -123,9 +124,13 @@ export default function Auth() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ email: cleanEmail, password }),
             });
+            data = await res.json();
+          } else {
+            data = err; // body already consumed — reuse parsed object
           }
+        } else {
+          data = await res.json();
         }
-        const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Login failed');
 
         if (data.user.role !== activeTab) {
