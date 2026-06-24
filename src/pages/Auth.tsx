@@ -75,19 +75,21 @@ export default function Auth() {
     setIsLoading(true);
     const cleanEmail = email.toLowerCase().trim();
 
+    // 15-second timeout — prevents infinite "LOGGING IN..." on slow connections
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
     try {
       if (isSignUp) {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: cleanEmail, password, displayName: name, role: activeTab })
+          body: JSON.stringify({ email: cleanEmail, password, displayName: name, role: activeTab }),
+          signal: controller.signal,
         });
         const data = await res.json();
-        
-        if (!res.ok) {
-          throw new Error(data.error || 'Registration failed');
-        }
-        
+        if (!res.ok) throw new Error(data.error || 'Registration failed');
+
         login(data.token, data.user);
         if (activeTab === 'client') {
           toast.success("Account created! Candidate access is pending review.");
@@ -99,27 +101,35 @@ export default function Auth() {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: cleanEmail, password })
+          body: JSON.stringify({ email: cleanEmail, password }),
+          signal: controller.signal,
         });
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Login failed');
 
-        if (!res.ok) {
-          throw new Error(data.error || 'Login failed');
-        }
-        
         if (data.user.role !== activeTab) {
           toast.error(`Access Denied: This account is registered as ${data.user.role.toUpperCase()}. Please use the correct tab.`);
-          setIsLoading(false);
           return;
         }
 
         login(data.token, data.user, data.clientProfile);
-        toast.success(`Authentication Successful`);
+
+        // Navigate immediately — don't leave user on auth page
+        const role = data.user.role;
+        const approved = data.user.isApproved ?? false;
+        const profileComplete = data.clientProfile
+          ? !!(data.clientProfile.applicationData?.firstName) || !!(data.clientProfile.onboardingSkipped)
+          : role !== 'client';
+        proceedToWorkspace(role, profileComplete, approved);
       }
     } catch (error: any) {
-      console.error('Sign-In Error:', error);
-      toast.error(error.message || 'Authentication failed. Please verify your credentials.');
+      if (error.name === 'AbortError') {
+        toast.error('Login is taking too long. The server may be starting up — please try again in a moment.');
+      } else {
+        toast.error(error.message || 'Authentication failed. Please verify your credentials.');
+      }
     } finally {
+      clearTimeout(timeout);
       setIsLoading(false);
     }
   };
