@@ -444,37 +444,30 @@ if (!process.env.VERCEL) {
     const PORT = parseInt(process.env.PORT || '3000', 10);
     const distPath = path.join(process.cwd(), "dist");
 
-    // Initialize DB with pg adapter (wasm engine — no Rust binary, no timer panic).
-    // Pool/adapter/PrismaClient constructors are synchronous — no DB connection yet.
-    // Actual connection is lazy (first query). If init fails, server still starts
-    // and routes return proper JSON errors instead of crashing to HTML.
+    // Use Neon HTTP adapter — no persistent TCP connections, no stale connection hangs.
+    // Each query is an independent HTTP request to Neon. Survives process restarts cleanly.
     try {
       const dbUrl = process.env.DATABASE_URL;
       console.log('[db] DATABASE_URL:', dbUrl ? dbUrl.slice(0, 50) + '...' : 'NOT FOUND');
       if (!dbUrl) throw new Error('DATABASE_URL not set');
-      const { default: pg } = await import('pg') as any;
       // @ts-ignore
-      const { PrismaPg } = await import('@prisma/adapter-pg') as any;
-      const pool = new pg.Pool({
-        connectionString: dbUrl,
-        ssl: { rejectUnauthorized: false },
-        keepAlive: true,           // TCP keepalive — prevents idle connection drop
-        idleTimeoutMillis: 0,      // never close idle connections
-        max: 3,                    // small pool — Neon free tier limit
-      });
-      const adapter = new PrismaPg(pool);
+      const { neon, neonConfig } = await import('@neondatabase/serverless') as any;
+      // @ts-ignore
+      const { PrismaNeon } = await import('@prisma/adapter-neon') as any;
+      neonConfig.fetchConnectionCache = true;
+      const sql = neon(dbUrl);
+      const adapter = new PrismaNeon(sql);
       prisma = new PrismaClient({ adapter } as any);
-      console.log('[db] wasm + pg adapter configured');
+      console.log('[db] Neon HTTP adapter configured');
 
-      // Warm up Neon immediately so first user login is instant instead of
-      // waiting 3-5s for the serverless compute to wake from sleep.
+      // Warm up Neon compute on startup so first login is fast
       prisma.$queryRaw`SELECT 1`
         .then(() => {
           console.log('[db] Neon warmed up');
-          // Keep Neon alive — it sleeps after 5 min of inactivity on free tier.
+          // Ping every 4 min to prevent Neon compute from sleeping (sleeps after 5 min)
           setInterval(() => {
             prisma.$queryRaw`SELECT 1`.catch(() => {});
-          }, 3.5 * 60 * 1000).unref();
+          }, 4 * 60 * 1000).unref();
         })
         .catch((e: any) => console.error('[db] warm-up failed:', e.message));
     } catch (e: any) {
