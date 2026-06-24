@@ -511,14 +511,14 @@ if (!process.env.VERCEL) {
       // from Hostinger (TCP 5432 and WebSocket are blocked). PrismaNeon (the
       // Pool/WebSocket variant) constructs without error but its queries hang.
       let adapterConfigured = false;
-      const neonMod = await import('@neondatabase/serverless') as any;
       const adapterMod = await import('@prisma/adapter-neon') as any;
       console.log('[db] adapter-neon exports:', Object.keys(adapterMod).join(','));
-      const sql = neonMod.neon(dbUrl);
 
       if (adapterMod.PrismaNeonHTTP) {
         try {
-          const adapter = new adapterMod.PrismaNeonHTTP(sql);
+          // PrismaNeonHTTP takes the CONNECTION STRING (it calls neon() internally).
+          // Passing neon(url) here causes "connection string is not a valid URL".
+          const adapter = new adapterMod.PrismaNeonHTTP(dbUrl);
           prisma = new PrismaClient({ adapter } as any);
           adapterConfigured = true;
           dbAdapter = 'PrismaNeonHTTP';
@@ -533,13 +533,17 @@ if (!process.env.VERCEL) {
       }
 
       if (!adapterConfigured) {
-        // Last-resort fallback: PrismaNeon with the HTTP sql (may or may not work)
+        // Last-resort fallback: PrismaNeon (WebSocket Pool)
         try {
-          const adapter = new adapterMod.PrismaNeon(sql);
+          const { Pool, neonConfig } = await import('@neondatabase/serverless') as any;
+          const wsModule = await import('ws') as any;
+          neonConfig.webSocketConstructor = wsModule.default ?? wsModule;
+          const pool = new Pool({ connectionString: dbUrl });
+          const adapter = new adapterMod.PrismaNeon(pool);
           prisma = new PrismaClient({ adapter } as any);
           adapterConfigured = true;
-          dbAdapter = 'PrismaNeon(sql)';
-          console.log('[db] PrismaNeon(sql) fallback configured');
+          dbAdapter = 'PrismaNeon(pool)';
+          console.log('[db] PrismaNeon(pool) fallback configured');
         } catch (fe: any) {
           console.error('[db] fallback adapter error:', fe.message);
           dbInitError += ' | fallback: ' + fe.message;

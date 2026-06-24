@@ -463,13 +463,11 @@ if (!process.env.VERCEL) {
       console.log("[db] DATABASE_URL:", dbUrl ? dbUrl.slice(0, 50) + "..." : "NOT FOUND");
       if (!dbUrl) throw new Error("DATABASE_URL not set");
       let adapterConfigured = false;
-      const neonMod = await import("@neondatabase/serverless");
       const adapterMod = await import("@prisma/adapter-neon");
       console.log("[db] adapter-neon exports:", Object.keys(adapterMod).join(","));
-      const sql = neonMod.neon(dbUrl);
       if (adapterMod.PrismaNeonHTTP) {
         try {
-          const adapter = new adapterMod.PrismaNeonHTTP(sql);
+          const adapter = new adapterMod.PrismaNeonHTTP(dbUrl);
           prisma = new PrismaClient({ adapter });
           adapterConfigured = true;
           dbAdapter = "PrismaNeonHTTP";
@@ -484,11 +482,15 @@ if (!process.env.VERCEL) {
       }
       if (!adapterConfigured) {
         try {
-          const adapter = new adapterMod.PrismaNeon(sql);
+          const { Pool, neonConfig } = await import("@neondatabase/serverless");
+          const wsModule = await import("ws");
+          neonConfig.webSocketConstructor = wsModule.default ?? wsModule;
+          const pool = new Pool({ connectionString: dbUrl });
+          const adapter = new adapterMod.PrismaNeon(pool);
           prisma = new PrismaClient({ adapter });
           adapterConfigured = true;
-          dbAdapter = "PrismaNeon(sql)";
-          console.log("[db] PrismaNeon(sql) fallback configured");
+          dbAdapter = "PrismaNeon(pool)";
+          console.log("[db] PrismaNeon(pool) fallback configured");
         } catch (fe) {
           console.error("[db] fallback adapter error:", fe.message);
           dbInitError += " | fallback: " + fe.message;
