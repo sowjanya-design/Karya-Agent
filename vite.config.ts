@@ -15,6 +15,22 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            // Core React runtime — tiny, cached forever
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            // Animation library — large, rarely changes
+            'vendor-motion': ['motion'],
+            // Icon library
+            'vendor-icons': ['lucide-react'],
+            // UI utilities
+            'vendor-ui': ['sonner', 'clsx', 'tailwind-merge'],
+          },
+        },
+      },
+    },
     server: {
       proxy: {
         '/api': {
@@ -22,8 +38,6 @@ export default defineConfig(({mode}) => {
           changeOrigin: true,
         }
       },
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
     },
   };

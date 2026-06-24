@@ -1,21 +1,29 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Landing from './pages/Landing';
-import Auth from './pages/Auth';
-import Onboarding from './pages/Onboarding';
-import Dashboard from './pages/Dashboard';
-import Layout from './components/Layout';
-import Features from './pages/Features';
-import About from './pages/About';
-import Settings from './pages/Settings';
-import HowToUse from './pages/HowToUse';
-import Contact from './pages/Contact';
-import AdminDashboard from './pages/AdminDashboard';
-import StudentDossierPage from './pages/StudentDossierPage';
-import Banned from './pages/Banned';
-import Privacy from './pages/Privacy';
-import Terms from './pages/Terms';
-import Security from './pages/Security';
+
+// Lazy-load every page so the landing page bundle stays tiny
+const Landing = lazy(() => import('./pages/Landing'));
+const Auth = lazy(() => import('./pages/Auth'));
+const Onboarding = lazy(() => import('./pages/Onboarding'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Layout = lazy(() => import('./components/Layout'));
+const Features = lazy(() => import('./pages/Features'));
+const About = lazy(() => import('./pages/About'));
+const Settings = lazy(() => import('./pages/Settings'));
+const HowToUse = lazy(() => import('./pages/HowToUse'));
+const Contact = lazy(() => import('./pages/Contact'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const StudentDossierPage = lazy(() => import('./pages/StudentDossierPage'));
+const Banned = lazy(() => import('./pages/Banned'));
+const Privacy = lazy(() => import('./pages/Privacy'));
+const Terms = lazy(() => import('./pages/Terms'));
+const Security = lazy(() => import('./pages/Security'));
+
+const PageLoader = () => (
+  <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+    <div className="w-10 h-10 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
+  </div>
+);
 import { Toaster } from 'sonner';
 import { ThemeProvider } from './lib/ThemeContext';
 import { UserRoleProvider, useUserRole } from './contexts/UserRoleContext';
@@ -103,7 +111,9 @@ export default function App() {
       <UserRoleProvider>
         <Toaster theme="dark" position="bottom-right" />
         <BrowserRouter>
-          <AppRoutes />
+          <Suspense fallback={<PageLoader />}>
+            <AppRoutes />
+          </Suspense>
         </BrowserRouter>
       </UserRoleProvider>
     </ThemeProvider>
