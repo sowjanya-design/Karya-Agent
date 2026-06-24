@@ -56,6 +56,17 @@ async function warmupNeon() {
       await client.connect();
       await client.query('SELECT 1');
       await client.end().catch(() => {});
+      // Neon compute is warm — immediately prime the Prisma pool while it's hot.
+      // Without this, the pool establishes its own TCP connection on first login,
+      // which could hit another cold-start window.
+      if (prisma) {
+        try {
+          await prisma.$queryRaw`SELECT 1`;
+          console.log('[db] Prisma pool primed ✓');
+        } catch (pe: any) {
+          console.warn('[db] Prisma pool prime failed (non-fatal):', pe.message);
+        }
+      }
       dbReady = true;
       warmingUp = false;
       console.log(`[db] Neon warmed up ✓ (TCP attempt ${i})`);
