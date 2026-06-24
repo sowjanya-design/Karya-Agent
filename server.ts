@@ -137,8 +137,6 @@ app.post("/api/auth/login", async (req, res) => {
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       if (!prisma) return res.status(503).json({ error: "Server starting up, please retry in a moment" });
-      // Set 15s query timeout at the session level (correct way for pg)
-      await prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = 15000`).catch(() => {});
       const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
       if (!user) return res.status(400).json({ error: "Invalid credentials" });
       const validPassword = await bcrypt.compare(password, (user as any).passwordHash);
