@@ -31,6 +31,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@vitejs/plugin-react": "^5.0.4",
     "bcrypt": "^6.0.0",
+    "bcryptjs": "^2.4.3",
     "canvas-confetti": "^1.9.4",
     "cheerio": "^1.2.0",
     "clsx": "^2.1.1",

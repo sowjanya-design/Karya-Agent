@@ -8,7 +8,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import * as cheerio from "cheerio";
 import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import cors from "cors";
 process.on("uncaughtException", (err) => {
   console.error("[CRASH PREVENTED] uncaughtException:", err.message, err.stack);
