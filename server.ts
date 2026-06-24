@@ -9,10 +9,6 @@ import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import cors from "cors";
-// @ts-ignore — installed on Hostinger; local SSL issue blocks npm install
-import pg from "pg";
-// @ts-ignore
-import { PrismaPg } from "@prisma/adapter-pg";
 
 // Prevent unhandled promise rejections from crashing the process on Hostinger
 process.on('uncaughtException', (err) => {
@@ -466,7 +462,9 @@ if (!process.env.VERCEL) {
       const dbUrl = process.env.DATABASE_URL;
       console.log('[db] DATABASE_URL:', dbUrl ? dbUrl.slice(0, 50) + '...' : 'NOT FOUND');
       if (!dbUrl) throw new Error('DATABASE_URL not set');
-      const pool = new pg.Pool({
+      const { default: pgMod } = await import('pg') as any;
+      const { PrismaPg } = await import('@prisma/adapter-pg') as any;
+      const pool = new pgMod.Pool({
         connectionString: dbUrl,
         ssl: { rejectUnauthorized: false },
         max: 3,
