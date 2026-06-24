@@ -21,6 +21,11 @@ export default function Auth() {
   const navigate = useNavigate();
   const { user, userProfile, clientProfile, loading, login, logout } = useUserRole();
 
+  // Pre-warm the server + Neon the moment the auth page loads so login is fast
+  useEffect(() => {
+    fetch('/api/ping').catch(() => {});
+  }, []);
+
   const loggedInUser = user;
   const loggedInRole = userProfile?.role;
   const isApproved = user?.isApproved ?? false;
@@ -77,7 +82,7 @@ export default function Auth() {
 
     // 15-second timeout — prevents infinite "LOGGING IN..." on slow connections
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 25000);
 
     try {
       if (isSignUp) {

@@ -82,8 +82,18 @@ app.use('/api', (_req, res, next) => {
 // ============================================================
 
 app.get("/api/health", (_req, res) => {
-  // Lightweight — no DB hit. DB status tracked separately via keepalive.
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// Warmup endpoint — called by Auth page on mount to pre-wake Neon
+// before user finishes typing credentials
+app.get("/api/ping", async (_req, res: any) => {
+  try {
+    if (prisma) await prisma.$queryRaw`SELECT 1`;
+    res.json({ ok: true });
+  } catch {
+    res.json({ ok: false });
+  }
 });
 
 app.get("/api/debug/env", (req, res) => {
@@ -453,7 +463,13 @@ if (!process.env.VERCEL) {
       const { default: pg } = await import('pg') as any;
       // @ts-ignore
       const { PrismaPg } = await import('@prisma/adapter-pg') as any;
-      const pool = new pg.Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+      const pool = new pg.Pool({
+        connectionString: dbUrl,
+        ssl: { rejectUnauthorized: false },
+        keepAlive: true,           // TCP keepalive — prevents idle connection drop
+        idleTimeoutMillis: 0,      // never close idle connections
+        max: 3,                    // small pool — Neon free tier limit
+      });
       const adapter = new PrismaPg(pool);
       prisma = new PrismaClient({ adapter } as any);
       console.log('[db] wasm + pg adapter configured');
