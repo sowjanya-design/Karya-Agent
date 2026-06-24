@@ -31,31 +31,36 @@ let prisma: PrismaClient = null!;
 let dbReady = false;
 
 let warmingUp = false;
-const queryWithTimeout = (ms: number) =>
-  Promise.race([
-    prisma.$queryRaw`SELECT 1`,
-    new Promise((_, rej) => setTimeout(() => rej(new Error(`query timeout after ${ms}ms`)), ms))
-  ]);
-
 async function warmupNeon() {
-  if (warmingUp || !prisma) return;
+  if (warmingUp) return;
   warmingUp = true;
-  console.log('[db] starting Neon warmup...');
-  for (let i = 1; i <= 10; i++) {
+  console.log('[db] starting Neon warmup via HTTP...');
+  // Use neon() HTTP function — avoids WebSocket/pool exhaustion issues.
+  // HTTP makes a plain HTTPS request; Neon wakes its compute and responds.
+  let sqlHttp: any = null;
+  try {
+    const { neon } = await import('@neondatabase/serverless') as any;
+    sqlHttp = neon(process.env.DATABASE_URL!);
+  } catch (e: any) {
+    console.error('[db] could not load neon HTTP driver:', e.message);
+    warmingUp = false;
+    return;
+  }
+  for (let i = 1; i <= 15; i++) {
     try {
-      await queryWithTimeout(35000); // 35s — enough for Neon cold-start
+      await sqlHttp`SELECT 1`;
       dbReady = true;
       warmingUp = false;
-      console.log(`[db] Neon warmed up ✓ (attempt ${i})`);
+      console.log(`[db] Neon warmed up ✓ (HTTP attempt ${i})`);
       return;
     } catch (e: any) {
-      console.error(`[db] warmup attempt ${i}/10: ${e.message}`);
+      console.error(`[db] warmup HTTP attempt ${i}/15: ${e.message}`);
       dbReady = false;
-      if (i < 10) await new Promise(r => setTimeout(r, 5000));
+      if (i < 15) await new Promise(r => setTimeout(r, 8000));
     }
   }
   warmingUp = false;
-  console.error('[db] warmup failed after 10 attempts — will retry on next keepalive');
+  console.error('[db] warmup gave up — will retry on next keepalive (3 min)');
 };
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
