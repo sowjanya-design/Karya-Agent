@@ -7,7 +7,7 @@
     "dev": "vite",
     "dev:server": "tsx server.ts",
     "start": "node server.js",
-    "postinstall": "npx prisma generate && npm run build:all && (npx prisma db seed || echo 'seed skipped')",
+    "postinstall": "echo '[build] starting' && npx prisma generate && echo '[build] prisma done' && npm run build:all && echo '[build] build done' && (npx prisma db seed || echo '[build] seed skipped') && echo '[build] complete'",
     "build": "vite build",
     "build:server": "esbuild server.ts --platform=node --format=esm --bundle --packages=external --external:@neondatabase/serverless --external:@prisma/adapter-neon --external:ws --outfile=server.js",
     "build:all": "npm run build && npm run build:server",
