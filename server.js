@@ -25,46 +25,20 @@ var prisma = null;
 var dbReady = false;
 var warmingUp = false;
 async function warmupNeon() {
-  if (warmingUp) return;
+  if (warmingUp || !prisma) return;
   warmingUp = true;
-  console.log("[db] starting Neon warmup via isolated pg.Client...");
-  let pgMod;
-  try {
-    pgMod = (await import("pg")).default;
-  } catch (e) {
-    console.error("[db] pg import failed:", e.message);
-    warmingUp = false;
-    return;
-  }
-  for (let i = 1; i <= 10; i++) {
-    const client = new pgMod.Client({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 24e4
-    });
+  console.log("[db] starting Neon warmup via Prisma (HTTP adapter)...");
+  for (let i = 1; i <= 12; i++) {
     try {
-      await client.connect();
-      await client.query("SELECT 1");
-      await client.end().catch(() => {
-      });
-      if (prisma) {
-        try {
-          await prisma.$queryRaw`SELECT 1`;
-          console.log("[db] Prisma pool primed \u2713");
-        } catch (pe) {
-          console.warn("[db] Prisma pool prime failed (non-fatal):", pe.message);
-        }
-      }
+      await prisma.$queryRaw`SELECT 1`;
       dbReady = true;
       warmingUp = false;
-      console.log(`[db] Neon warmed up \u2713 (TCP attempt ${i})`);
+      console.log(`[db] Neon warmed up \u2713 (attempt ${i})`);
       return;
     } catch (e) {
-      await client.end().catch(() => {
-      });
-      console.error(`[db] warmup TCP attempt ${i}/10: ${e.message}`);
+      console.error(`[db] warmup attempt ${i}/12: ${e.message}`);
       dbReady = false;
-      if (i < 10) await new Promise((r) => setTimeout(r, 5e3));
+      if (i < 12) await new Promise((r) => setTimeout(r, 6e3));
     }
   }
   warmingUp = false;
@@ -495,31 +469,34 @@ if (!process.env.VERCEL) {
       console.log("[db] DATABASE_URL:", dbUrl ? dbUrl.slice(0, 50) + "..." : "NOT FOUND");
       if (!dbUrl) throw new Error("DATABASE_URL not set");
       let adapterConfigured = false;
-      try {
-        const { neon: neonHttp } = await import("@neondatabase/serverless");
-        const { PrismaNeon } = await import("@prisma/adapter-neon");
-        const sql = neonHttp(dbUrl);
-        const adapter = new PrismaNeon(sql);
-        prisma = new PrismaClient({ adapter });
-        adapterConfigured = true;
-        console.log("[db] neon HTTP adapter configured");
-      } catch (he) {
-        console.error("[db] neon HTTP adapter error:", he.message);
-        dbInitError = "neon-http: " + he.message;
+      const neonMod = await import("@neondatabase/serverless");
+      const adapterMod = await import("@prisma/adapter-neon");
+      console.log("[db] adapter-neon exports:", Object.keys(adapterMod).join(","));
+      const sql = neonMod.neon(dbUrl);
+      if (adapterMod.PrismaNeonHTTP) {
+        try {
+          const adapter = new adapterMod.PrismaNeonHTTP(sql);
+          prisma = new PrismaClient({ adapter });
+          adapterConfigured = true;
+          console.log("[db] PrismaNeonHTTP adapter configured");
+        } catch (he) {
+          console.error("[db] PrismaNeonHTTP error:", he.message);
+          dbInitError = "neon-http: " + he.message;
+        }
+      } else {
+        dbInitError = "PrismaNeonHTTP export missing; exports=" + Object.keys(adapterMod).join(",");
+        console.error("[db] " + dbInitError);
       }
       if (!adapterConfigured) {
-        const { default: pgMod } = await import("pg");
-        const { PrismaPg } = await import("@prisma/adapter-pg");
-        const pool = new pgMod.Pool({
-          connectionString: dbUrl,
-          ssl: { rejectUnauthorized: false },
-          max: 5,
-          idleTimeoutMillis: 24e4
-        });
-        pool.on("error", (err) => console.error("[db] pool error:", err.message));
-        const adapter = new PrismaPg(pool);
-        prisma = new PrismaClient({ adapter });
-        console.log("[db] pg fallback adapter configured");
+        try {
+          const adapter = new adapterMod.PrismaNeon(sql);
+          prisma = new PrismaClient({ adapter });
+          adapterConfigured = true;
+          console.log("[db] PrismaNeon(sql) fallback configured");
+        } catch (fe) {
+          console.error("[db] fallback adapter error:", fe.message);
+          dbInitError += " | fallback: " + fe.message;
+        }
       }
       warmupNeon();
     } catch (e) {

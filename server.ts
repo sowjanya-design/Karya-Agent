@@ -32,50 +32,24 @@ let dbReady = false;
 
 let warmingUp = false;
 async function warmupNeon() {
-  if (warmingUp) return;
+  if (warmingUp || !prisma) return;
   warmingUp = true;
-  console.log('[db] starting Neon warmup via isolated pg.Client...');
-  // Use a fresh pg.Client per attempt — never touches the Prisma pool,
-  // so failed attempts don't exhaust pool connections.
-  // 90s connectionTimeoutMillis gives Neon free-tier enough time to cold-start.
-  let pgMod: any;
-  try {
-    pgMod = (await import('pg') as any).default;
-  } catch (e: any) {
-    console.error('[db] pg import failed:', e.message);
-    warmingUp = false;
-    return;
-  }
-  for (let i = 1; i <= 10; i++) {
-    const client = new pgMod.Client({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 240000,
-    });
+  console.log('[db] starting Neon warmup via Prisma (HTTP adapter)...');
+  // Use prisma.$queryRaw directly — this exercises the SAME transport that
+  // real login queries use (neon HTTP over port 443). The previous pg.Client
+  // approach tested TCP port 5432, which Hostinger blocks, so dbReady never
+  // flipped true even though Prisma queries over HTTP worked fine.
+  for (let i = 1; i <= 12; i++) {
     try {
-      await client.connect();
-      await client.query('SELECT 1');
-      await client.end().catch(() => {});
-      // Neon compute is warm — immediately prime the Prisma pool while it's hot.
-      // Without this, the pool establishes its own TCP connection on first login,
-      // which could hit another cold-start window.
-      if (prisma) {
-        try {
-          await prisma.$queryRaw`SELECT 1`;
-          console.log('[db] Prisma pool primed ✓');
-        } catch (pe: any) {
-          console.warn('[db] Prisma pool prime failed (non-fatal):', pe.message);
-        }
-      }
+      await prisma.$queryRaw`SELECT 1`;
       dbReady = true;
       warmingUp = false;
-      console.log(`[db] Neon warmed up ✓ (TCP attempt ${i})`);
+      console.log(`[db] Neon warmed up ✓ (attempt ${i})`);
       return;
     } catch (e: any) {
-      await client.end().catch(() => {});
-      console.error(`[db] warmup TCP attempt ${i}/10: ${e.message}`);
+      console.error(`[db] warmup attempt ${i}/12: ${e.message}`);
       dbReady = false;
-      if (i < 10) await new Promise(r => setTimeout(r, 5000));
+      if (i < 12) await new Promise(r => setTimeout(r, 6000));
     }
   }
   warmingUp = false;
@@ -525,37 +499,42 @@ if (!process.env.VERCEL) {
       console.log('[db] DATABASE_URL:', dbUrl ? dbUrl.slice(0, 50) + '...' : 'NOT FOUND');
       if (!dbUrl) throw new Error('DATABASE_URL not set');
 
-      // Try neon() HTTP adapter first — HTTP is the only transport confirmed
-      // to reach Neon from this host. If PrismaNeon rejects the HTTP function,
-      // dbInitError captures why and we fall back to pg for diagnostics.
+      // Use PrismaNeonHTTP — the HTTP variant that sends every query over
+      // HTTPS port 443. This is the ONLY transport confirmed to reach Neon
+      // from Hostinger (TCP 5432 and WebSocket are blocked). PrismaNeon (the
+      // Pool/WebSocket variant) constructs without error but its queries hang.
       let adapterConfigured = false;
-      try {
-        const { neon: neonHttp } = await import('@neondatabase/serverless') as any;
-        const { PrismaNeon } = await import('@prisma/adapter-neon') as any;
-        const sql = neonHttp(dbUrl);
-        const adapter = new PrismaNeon(sql);
-        prisma = new PrismaClient({ adapter } as any);
-        adapterConfigured = true;
-        console.log('[db] neon HTTP adapter configured');
-      } catch (he: any) {
-        console.error('[db] neon HTTP adapter error:', he.message);
-        dbInitError = 'neon-http: ' + he.message;
+      const neonMod = await import('@neondatabase/serverless') as any;
+      const adapterMod = await import('@prisma/adapter-neon') as any;
+      console.log('[db] adapter-neon exports:', Object.keys(adapterMod).join(','));
+      const sql = neonMod.neon(dbUrl);
+
+      if (adapterMod.PrismaNeonHTTP) {
+        try {
+          const adapter = new adapterMod.PrismaNeonHTTP(sql);
+          prisma = new PrismaClient({ adapter } as any);
+          adapterConfigured = true;
+          console.log('[db] PrismaNeonHTTP adapter configured');
+        } catch (he: any) {
+          console.error('[db] PrismaNeonHTTP error:', he.message);
+          dbInitError = 'neon-http: ' + he.message;
+        }
+      } else {
+        dbInitError = 'PrismaNeonHTTP export missing; exports=' + Object.keys(adapterMod).join(',');
+        console.error('[db] ' + dbInitError);
       }
 
       if (!adapterConfigured) {
-        // Fallback: pg TCP (works if Neon compute is already warm)
-        const { default: pgMod } = await import('pg') as any;
-        const { PrismaPg } = await import('@prisma/adapter-pg') as any;
-        const pool = new pgMod.Pool({
-          connectionString: dbUrl,
-          ssl: { rejectUnauthorized: false },
-          max: 5,
-          idleTimeoutMillis: 240000,
-        });
-        pool.on('error', (err: any) => console.error('[db] pool error:', err.message));
-        const adapter = new PrismaPg(pool);
-        prisma = new PrismaClient({ adapter } as any);
-        console.log('[db] pg fallback adapter configured');
+        // Last-resort fallback: PrismaNeon with the HTTP sql (may or may not work)
+        try {
+          const adapter = new adapterMod.PrismaNeon(sql);
+          prisma = new PrismaClient({ adapter } as any);
+          adapterConfigured = true;
+          console.log('[db] PrismaNeon(sql) fallback configured');
+        } catch (fe: any) {
+          console.error('[db] fallback adapter error:', fe.message);
+          dbInitError += ' | fallback: ' + fe.message;
+        }
       }
 
       // Warm up Neon on startup with retries
