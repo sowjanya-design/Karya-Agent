@@ -34,29 +34,37 @@ let warmingUp = false;
 async function warmupNeon() {
   if (warmingUp) return;
   warmingUp = true;
-  console.log('[db] starting Neon warmup via HTTP...');
-  // Use neon() HTTP function — avoids WebSocket/pool exhaustion issues.
-  // HTTP makes a plain HTTPS request; Neon wakes its compute and responds.
-  let sqlHttp: any = null;
+  console.log('[db] starting Neon warmup via isolated pg.Client...');
+  // Use a fresh pg.Client per attempt — never touches the Prisma pool,
+  // so failed attempts don't exhaust pool connections.
+  // 90s connectionTimeoutMillis gives Neon free-tier enough time to cold-start.
+  let pgMod: any;
   try {
-    const { neon } = await import('@neondatabase/serverless') as any;
-    sqlHttp = neon(process.env.DATABASE_URL!);
+    pgMod = (await import('pg') as any).default;
   } catch (e: any) {
-    console.error('[db] could not load neon HTTP driver:', e.message);
+    console.error('[db] pg import failed:', e.message);
     warmingUp = false;
     return;
   }
-  for (let i = 1; i <= 15; i++) {
+  for (let i = 1; i <= 10; i++) {
+    const client = new pgMod.Client({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 90000,
+    });
     try {
-      await sqlHttp`SELECT 1`;
+      await client.connect();
+      await client.query('SELECT 1');
+      await client.end().catch(() => {});
       dbReady = true;
       warmingUp = false;
-      console.log(`[db] Neon warmed up ✓ (HTTP attempt ${i})`);
+      console.log(`[db] Neon warmed up ✓ (TCP attempt ${i})`);
       return;
     } catch (e: any) {
-      console.error(`[db] warmup HTTP attempt ${i}/15: ${e.message}`);
+      await client.end().catch(() => {});
+      console.error(`[db] warmup TCP attempt ${i}/10: ${e.message}`);
       dbReady = false;
-      if (i < 15) await new Promise(r => setTimeout(r, 8000));
+      if (i < 10) await new Promise(r => setTimeout(r, 5000));
     }
   }
   warmingUp = false;
@@ -507,15 +515,21 @@ if (!process.env.VERCEL) {
       console.log('[db] DATABASE_URL:', dbUrl ? dbUrl.slice(0, 50) + '...' : 'NOT FOUND');
       if (!dbUrl) throw new Error('DATABASE_URL not set');
 
-      // Use neon() HTTP adapter — all queries go over HTTPS port 443.
-      // Hostinger blocks outbound port 5432 (TCP/WebSocket to Neon), but
-      // port 443 is always open. This is the only connection method that works.
-      const { neon: neonHttp } = await import('@neondatabase/serverless') as any;
-      const { PrismaNeon } = await import('@prisma/adapter-neon') as any;
-      const sql = neonHttp(dbUrl);
-      const adapter = new PrismaNeon(sql);
+      // pg TCP adapter — proven to work on this host (22:50 logs showed
+      // "Neon warmed up" via TCP). Main pool has no connectionTimeout so it
+      // waits as long as needed; warmup uses an isolated Client (no pool).
+      const { default: pgMod } = await import('pg') as any;
+      const { PrismaPg } = await import('@prisma/adapter-pg') as any;
+      const pool = new pgMod.Pool({
+        connectionString: dbUrl,
+        ssl: { rejectUnauthorized: false },
+        max: 5,
+        idleTimeoutMillis: 240000,
+      });
+      pool.on('error', (err: any) => console.error('[db] pool error:', err.message));
+      const adapter = new PrismaPg(pool);
       prisma = new PrismaClient({ adapter } as any);
-      console.log('[db] neon HTTP adapter configured');
+      console.log('[db] pg adapter configured');
 
       // Warm up Neon on startup with retries
       warmupNeon();
