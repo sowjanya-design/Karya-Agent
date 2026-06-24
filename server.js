@@ -23,6 +23,7 @@ var __filename = fileURLToPath(import.meta.url);
 var __dirname = path.dirname(__filename);
 var prisma = null;
 var dbReady = false;
+var dbAdapter = "none";
 var warmingUp = false;
 async function warmupNeon() {
   if (warmingUp || !prisma) return;
@@ -84,26 +85,19 @@ app.use("/api", (_req, res, next) => {
 });
 var dbInitError = "";
 app.get("/api/debug/db", async (_req, res) => {
-  const checks = { prismaNull: prisma === null, dbReady, dbInitError };
+  const checks = { build: "http-v2", prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
   try {
-    checks.ws = !!await import("ws");
-  } catch (e) {
-    checks.wsError = e.message;
-  }
-  try {
-    checks.neon = !!await import("@neondatabase/serverless");
-  } catch (e) {
-    checks.neonError = e.message;
-  }
-  try {
-    checks.adapterNeon = !!await import("@prisma/adapter-neon");
+    checks.adapterNeonExports = Object.keys(await import("@prisma/adapter-neon")).join(",");
   } catch (e) {
     checks.adapterNeonError = e.message;
   }
-  try {
-    checks.adapterPg = !!await import("@prisma/adapter-pg");
-  } catch (e) {
-    checks.adapterPgError = e.message;
+  if (prisma) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      checks.liveQuery = "ok";
+    } catch (e) {
+      checks.liveQuery = "FAIL: " + e.message;
+    }
   }
   res.json(checks);
 });
@@ -478,6 +472,7 @@ if (!process.env.VERCEL) {
           const adapter = new adapterMod.PrismaNeonHTTP(sql);
           prisma = new PrismaClient({ adapter });
           adapterConfigured = true;
+          dbAdapter = "PrismaNeonHTTP";
           console.log("[db] PrismaNeonHTTP adapter configured");
         } catch (he) {
           console.error("[db] PrismaNeonHTTP error:", he.message);
@@ -492,6 +487,7 @@ if (!process.env.VERCEL) {
           const adapter = new adapterMod.PrismaNeon(sql);
           prisma = new PrismaClient({ adapter });
           adapterConfigured = true;
+          dbAdapter = "PrismaNeon(sql)";
           console.log("[db] PrismaNeon(sql) fallback configured");
         } catch (fe) {
           console.error("[db] fallback adapter error:", fe.message);

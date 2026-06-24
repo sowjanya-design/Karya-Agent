@@ -29,6 +29,7 @@ const __dirname = path.dirname(__filename);
 // wasm engine requires a driver adapter — assigned in the startup IIFE before app.listen()
 let prisma: PrismaClient = null!;
 let dbReady = false;
+let dbAdapter = 'none';
 
 let warmingUp = false;
 async function warmupNeon() {
@@ -118,11 +119,17 @@ app.use('/api', (_req, res, next) => {
 // Debug: shows exactly what happened during DB init
 let dbInitError = '';
 app.get("/api/debug/db", async (_req, res) => {
-  const checks: any = { prismaNull: prisma === null, dbReady, dbInitError };
-  try { checks.ws = !!(await import('ws')); } catch (e: any) { checks.wsError = e.message; }
-  try { checks.neon = !!(await import('@neondatabase/serverless')); } catch (e: any) { checks.neonError = e.message; }
-  try { checks.adapterNeon = !!(await import('@prisma/adapter-neon')); } catch (e: any) { checks.adapterNeonError = e.message; }
-  try { checks.adapterPg = !!(await import('@prisma/adapter-pg')); } catch (e: any) { checks.adapterPgError = e.message; }
+  const checks: any = { build: 'http-v2', prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
+  try { checks.adapterNeonExports = Object.keys(await import('@prisma/adapter-neon')).join(','); } catch (e: any) { checks.adapterNeonError = e.message; }
+  // Live query test over the configured adapter
+  if (prisma) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      checks.liveQuery = 'ok';
+    } catch (e: any) {
+      checks.liveQuery = 'FAIL: ' + e.message;
+    }
+  }
   res.json(checks);
 });
 
@@ -514,6 +521,7 @@ if (!process.env.VERCEL) {
           const adapter = new adapterMod.PrismaNeonHTTP(sql);
           prisma = new PrismaClient({ adapter } as any);
           adapterConfigured = true;
+          dbAdapter = 'PrismaNeonHTTP';
           console.log('[db] PrismaNeonHTTP adapter configured');
         } catch (he: any) {
           console.error('[db] PrismaNeonHTTP error:', he.message);
@@ -530,6 +538,7 @@ if (!process.env.VERCEL) {
           const adapter = new adapterMod.PrismaNeon(sql);
           prisma = new PrismaClient({ adapter } as any);
           adapterConfigured = true;
+          dbAdapter = 'PrismaNeon(sql)';
           console.log('[db] PrismaNeon(sql) fallback configured');
         } catch (fe: any) {
           console.error('[db] fallback adapter error:', fe.message);
