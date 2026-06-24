@@ -112,6 +112,17 @@ app.use('/api', (_req, res, next) => {
 // ALL API ROUTES
 // ============================================================
 
+// Debug: shows exactly what happened during DB init
+let dbInitError = '';
+app.get("/api/debug/db", async (_req, res) => {
+  const checks: any = { prismaNull: prisma === null, dbReady, dbInitError };
+  try { checks.ws = !!(await import('ws')); } catch (e: any) { checks.wsError = e.message; }
+  try { checks.neon = !!(await import('@neondatabase/serverless')); } catch (e: any) { checks.neonError = e.message; }
+  try { checks.adapterNeon = !!(await import('@prisma/adapter-neon')); } catch (e: any) { checks.adapterNeonError = e.message; }
+  try { checks.adapterPg = !!(await import('@prisma/adapter-pg')); } catch (e: any) { checks.adapterPgError = e.message; }
+  res.json(checks);
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
@@ -500,8 +511,8 @@ if (!process.env.VERCEL) {
       // Warm up Neon on startup with retries
       warmupNeon();
     } catch (e: any) {
+      dbInitError = e.message;
       console.error('[db] init failed, server still starting:', e.message);
-      // prisma stays null — routes will return 500 JSON, not crash the server
     }
 
     // Start listening regardless of DB state.
