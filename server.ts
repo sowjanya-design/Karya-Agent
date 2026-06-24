@@ -484,20 +484,18 @@ if (!process.env.VERCEL) {
       const dbUrl = process.env.DATABASE_URL;
       console.log('[db] DATABASE_URL:', dbUrl ? dbUrl.slice(0, 50) + '...' : 'NOT FOUND');
       if (!dbUrl) throw new Error('DATABASE_URL not set');
-      const { default: pgMod } = await import('pg') as any;
-      const { PrismaPg } = await import('@prisma/adapter-pg') as any;
-      const pool = new pgMod.Pool({
-        connectionString: dbUrl,
-        ssl: { rejectUnauthorized: false },
-        max: 5,
-        idleTimeoutMillis: 30000,
-        // No connectionTimeoutMillis — let Neon cold-start take as long as needed
-        // warmupNeon() handles the wait; login button stays disabled until ready
-      });
+
+      // Use @prisma/adapter-neon (WebSocket pool) — guaranteed installed,
+      // was explicitly listed in esbuild externals from day one.
+      const wsModule = await import('ws') as any;
+      const { Pool, neonConfig } = await import('@neondatabase/serverless') as any;
+      const { PrismaNeon } = await import('@prisma/adapter-neon') as any;
+      neonConfig.webSocketConstructor = wsModule.default ?? wsModule;
+      const pool = new Pool({ connectionString: dbUrl });
       pool.on('error', (err: any) => console.error('[db] pool error:', err.message));
-      const adapter = new PrismaPg(pool);
+      const adapter = new PrismaNeon(pool);
       prisma = new PrismaClient({ adapter } as any);
-      console.log('[db] pg adapter configured');
+      console.log('[db] neon-ws adapter configured');
 
       // Warm up Neon on startup with retries
       warmupNeon();
