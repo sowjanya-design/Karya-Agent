@@ -134,30 +134,22 @@ app.post("/api/auth/register", async (req, res) => {
   }
 });
 
-app.post("/api/auth/login", async (req: any, res: any) => {
+app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
-
-  // Hard 12-second timeout — return JSON error instead of hanging
-  const timer = setTimeout(() => {
-    if (!res.headersSent) res.status(503).json({ error: "Login is taking too long. Server may be waking up — please try again." });
-  }, 12000);
-
   try {
-    if (!prisma) { clearTimeout(timer); return res.status(503).json({ error: "Server starting up, please retry in a moment" }); }
+    if (!prisma) return res.status(503).json({ error: "Server starting up, please retry in a moment" });
     const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    if (!user) { clearTimeout(timer); return res.status(400).json({ error: "Invalid credentials" }); }
+    if (!user) return res.status(400).json({ error: "Invalid credentials" });
     const validPassword = await bcrypt.compare(password, (user as any).passwordHash);
-    if (!validPassword) { clearTimeout(timer); return res.status(400).json({ error: "Invalid credentials" }); }
+    if (!validPassword) return res.status(400).json({ error: "Invalid credentials" });
     const token = jwt.sign({ uid: user.uid, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
     let clientProfile = null;
     if ((user as any).role === 'client') {
       clientProfile = await prisma.client.findUnique({ where: { uid: (user as any).uid } });
     }
-    clearTimeout(timer);
-    if (!res.headersSent) res.json({ token, user, clientProfile });
+    res.json({ token, user, clientProfile });
   } catch (error: any) {
-    clearTimeout(timer);
-    if (!res.headersSent) res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
 });
 

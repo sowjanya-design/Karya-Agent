@@ -16,6 +16,7 @@ export default function Auth() {
   const [name, setName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [loginStatus, setLoginStatus] = useState('');
   const [showAuthSetupGuide, setShowAuthSetupGuide] = useState(false);
   
   const navigate = useNavigate();
@@ -78,11 +79,15 @@ export default function Auth() {
     }
 
     setIsLoading(true);
+    setLoginStatus('Connecting...');
     const cleanEmail = email.toLowerCase().trim();
 
-    // 15-second timeout — prevents infinite "LOGGING IN..." on slow connections
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000);
+    // Progressive status messages so user knows server is waking up
+    const t1 = setTimeout(() => setLoginStatus('Server is starting up, please wait...'), 4000);
+    const t2 = setTimeout(() => setLoginStatus('Almost there, waking up the database...'), 10000);
+    const t3 = setTimeout(() => setLoginStatus('This is taking a bit longer than usual... still trying'), 18000);
+
+    const clearTimers = () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
 
     try {
       if (isSignUp) {
@@ -90,7 +95,6 @@ export default function Auth() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: cleanEmail, password, displayName: name, role: activeTab }),
-          signal: controller.signal,
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Registration failed');
@@ -107,7 +111,6 @@ export default function Auth() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: cleanEmail, password }),
-          signal: controller.signal,
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Login failed');
@@ -119,7 +122,6 @@ export default function Auth() {
 
         login(data.token, data.user, data.clientProfile);
 
-        // Navigate immediately — don't leave user on auth page
         const role = data.user.role;
         const approved = data.user.isApproved ?? false;
         const profileComplete = data.clientProfile
@@ -128,13 +130,10 @@ export default function Auth() {
         proceedToWorkspace(role, profileComplete, approved);
       }
     } catch (error: any) {
-      if (error.name === 'AbortError') {
-        toast.error('Login is taking too long. The server may be starting up — please try again in a moment.');
-      } else {
-        toast.error(error.message || 'Authentication failed. Please verify your credentials.');
-      }
+      toast.error(error.message || 'Authentication failed. Please verify your credentials.');
     } finally {
-      clearTimeout(timeout);
+      clearTimers();
+      setLoginStatus('');
       setIsLoading(false);
     }
   };
@@ -479,9 +478,11 @@ export default function Auth() {
                   className={`w-full relative overflow-hidden group py-5 rounded-xl font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 disabled:opacity-50 hover:scale-[1.01] ${currentTheme.buttonBg}`}
                 >
                   {isLoading ? (
-                    <span className="flex items-center gap-3">
-                      <div className="w-4 h-4 border-2 border-bg-deep/20 border-t-bg-deep rounded-full animate-spin" />
-                      {isSignUp ? 'Creating account...' : 'Logging in...'}
+                    <span className="flex flex-col items-center gap-1">
+                      <span className="flex items-center gap-3">
+                        <div className="w-4 h-4 border-2 border-bg-deep/20 border-t-bg-deep rounded-full animate-spin" />
+                        {loginStatus || (isSignUp ? 'Creating account...' : 'Logging in...')}
+                      </span>
                     </span>
                   ) : (
                     <>
