@@ -97,8 +97,7 @@ try {
   anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   console.log("✅ Anthropic initialized");
 } catch (e) {
-  console.error("❌ Anthropic init failed:", e);
-  process.exit(1);
+  console.error("❌ Anthropic init failed (non-fatal):", e);
 }
 
 const transporter = process.env.EMAIL_USER ? nodemailer.createTransport({
