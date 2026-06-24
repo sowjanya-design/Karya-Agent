@@ -14,6 +14,14 @@ import pg from "pg";
 // @ts-ignore
 import { PrismaPg } from "@prisma/adapter-pg";
 
+// Prevent unhandled promise rejections from crashing the process on Hostinger
+process.on('uncaughtException', (err) => {
+  console.error('[CRASH PREVENTED] uncaughtException:', err.message, err.stack);
+});
+process.on('unhandledRejection', (reason: any) => {
+  console.error('[CRASH PREVENTED] unhandledRejection:', reason?.message || reason);
+});
+
 // Load .env from both project root and prisma/ subdirectory.
 dotenv.config();
 dotenv.config({ path: path.join(process.cwd(), 'prisma', '.env') });
