@@ -85,15 +85,11 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Warmup endpoint — called by Auth page on mount to pre-wake Neon
-// before user finishes typing credentials
-app.get("/api/ping", async (_req, res: any) => {
-  try {
-    if (prisma) await prisma.$queryRaw`SELECT 1`;
-    res.json({ ok: true });
-  } catch {
-    res.json({ ok: false });
-  }
+// Ping — responds instantly so UptimeRobot never times out.
+// Fires Neon warmup in background so DB stays warm without blocking.
+app.get("/api/ping", (_req, res) => {
+  res.json({ ok: true });
+  if (prisma) prisma.$queryRaw`SELECT 1`.catch(() => {});
 });
 
 app.get("/api/debug/env", (req, res) => {
@@ -138,10 +134,11 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
-  // Retry once if DB times out on cold-start — second attempt hits warm Neon
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       if (!prisma) return res.status(503).json({ error: "Server starting up, please retry in a moment" });
+      // Set 15s query timeout at the session level (correct way for pg)
+      await prisma.$executeRawUnsafe(`SET LOCAL statement_timeout = 15000`).catch(() => {});
       const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
       if (!user) return res.status(400).json({ error: "Invalid credentials" });
       const validPassword = await bcrypt.compare(password, (user as any).passwordHash);
@@ -466,9 +463,8 @@ if (!process.env.VERCEL) {
         connectionString: dbUrl,
         ssl: { rejectUnauthorized: false },
         max: 3,
-        idleTimeoutMillis: 20000,        // release idle connections after 20s
-        connectionTimeoutMillis: 10000,  // fail fast if can't connect
-        statement_timeout: 12000,        // kill any query hanging >12s (Neon cold-start)
+        idleTimeoutMillis: 20000,
+        connectionTimeoutMillis: 15000,
       });
       pool.on('error', (err: any) => console.error('[db] pool error:', err.message));
       const adapter = new PrismaPg(pool);
