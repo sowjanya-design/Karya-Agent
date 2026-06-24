@@ -22,9 +22,23 @@ export default function Auth() {
   const navigate = useNavigate();
   const { user, userProfile, clientProfile, loading, login, logout } = useUserRole();
 
-  // Pre-warm the server + Neon the moment the auth page loads so login is fast
+  const [dbReady, setDbReady] = useState(false);
+
+  // Poll /api/ping until DB is warm, then enable login
   useEffect(() => {
-    fetch('/api/ping').catch(() => {});
+    let cancelled = false;
+    const poll = async () => {
+      while (!cancelled) {
+        try {
+          const r = await fetch('/api/ping');
+          const d = await r.json();
+          if (d.dbReady) { setDbReady(true); return; }
+        } catch {}
+        await new Promise(res => setTimeout(res, 3000));
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
   }, []);
 
   const loggedInUser = user;
@@ -107,31 +121,29 @@ export default function Auth() {
         }
         setIsSignUp(false);
       } else {
-        let res = await fetch('/api/auth/login', {
+        const doLogin = async () => fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: cleanEmail, password }),
         });
-        // Auto-retry once if server reports DB cold-start
+
+        let res = await doLogin();
+        // Parse safely — server may return HTML on Hostinger timeout
         let data: any;
-        if (res.status === 500) {
-          const err = await res.json().catch(() => ({}));
-          if ((err.error || '').includes('starting up') || (err.error || '').includes('timeout')) {
-            setLoginStatus('Database waking up, retrying...');
-            await new Promise(r => setTimeout(r, 3000));
-            res = await fetch('/api/auth/login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: cleanEmail, password }),
-            });
-            data = await res.json();
-          } else {
-            data = err; // body already consumed — reuse parsed object
-          }
-        } else {
-          data = await res.json();
+        const text = await res.text();
+        try { data = JSON.parse(text); } catch { data = {}; }
+
+        // If timed out (HTML response or explicit timeout error), retry once
+        const isTimeout = !res.ok && (!data.error || text.includes('Request Timeout') || text.includes('timed out'));
+        if (isTimeout) {
+          setLoginStatus('Server busy, retrying in 4 seconds...');
+          await new Promise(r => setTimeout(r, 4000));
+          res = await doLogin();
+          const t2 = await res.text();
+          try { data = JSON.parse(t2); } catch { data = {}; }
         }
-        if (!res.ok) throw new Error(data.error || 'Login failed');
+
+        if (!res.ok) throw new Error(data?.error || (isTimeout ? 'Server timed out, please try again' : 'Login failed'));
 
         if (data.user.role !== activeTab) {
           toast.error(`Access Denied: This account is registered as ${data.user.role.toUpperCase()}. Please use the correct tab.`);
@@ -492,7 +504,7 @@ export default function Auth() {
               <div className="space-y-3">
                 <button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || (!isSignUp && !dbReady)}
                   className={`w-full relative overflow-hidden group py-5 rounded-xl font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 disabled:opacity-50 hover:scale-[1.01] ${currentTheme.buttonBg}`}
                 >
                   {isLoading ? (
@@ -501,6 +513,11 @@ export default function Auth() {
                         <div className="w-4 h-4 border-2 border-bg-deep/20 border-t-bg-deep rounded-full animate-spin" />
                         {loginStatus || (isSignUp ? 'Creating account...' : 'Logging in...')}
                       </span>
+                    </span>
+                  ) : !isSignUp && !dbReady ? (
+                    <span className="flex items-center gap-3">
+                      <div className="w-4 h-4 border-2 border-bg-deep/20 border-t-bg-deep rounded-full animate-spin" />
+                      Server warming up...
                     </span>
                   ) : (
                     <>

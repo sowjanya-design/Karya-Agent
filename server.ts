@@ -28,6 +28,7 @@ const __dirname = path.dirname(__filename);
 
 // wasm engine requires a driver adapter — assigned in the startup IIFE before app.listen()
 let prisma: PrismaClient = null!;
+let dbReady = false; // true once first SELECT 1 succeeds after cold-start;
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
 
@@ -94,10 +95,10 @@ app.get("/api/health", (_req, res) => {
 });
 
 // Ping — responds instantly so UptimeRobot never times out.
-// Fires Neon warmup in background so DB stays warm without blocking.
+// Returns dbReady so the login page knows when DB is warm.
 app.get("/api/ping", (_req, res) => {
-  res.json({ ok: true });
-  if (prisma) prisma.$queryRaw`SELECT 1`.catch(() => {});
+  res.json({ ok: true, dbReady });
+  if (prisma && !dbReady) prisma.$queryRaw`SELECT 1`.catch(() => {});
 });
 
 app.get("/api/debug/env", (req, res) => {
@@ -476,12 +477,15 @@ if (!process.env.VERCEL) {
       prisma = new PrismaClient({ adapter } as any);
       console.log('[db] pg adapter configured');
 
-      // Warm up Neon compute on startup so first login is fast
+      // Warm up Neon compute on startup; set dbReady flag so login can proceed
       prisma.$queryRaw`SELECT 1`
         .then(() => {
-          console.log('[db] Neon warmed up');
+          dbReady = true;
+          console.log('[db] Neon warmed up ✓');
           setInterval(() => {
-            prisma.$queryRaw`SELECT 1`.catch(() => {});
+            prisma.$queryRaw`SELECT 1`
+              .then(() => { dbReady = true; })
+              .catch(() => { dbReady = false; });
           }, 4 * 60 * 1000).unref();
         })
         .catch((e: any) => console.error('[db] warm-up failed:', e.message));
