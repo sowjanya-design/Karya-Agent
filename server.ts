@@ -444,27 +444,30 @@ if (!process.env.VERCEL) {
     const PORT = parseInt(process.env.PORT || '3000', 10);
     const distPath = path.join(process.cwd(), "dist");
 
-    // Use Neon HTTP adapter — no persistent TCP connections, no stale connection hangs.
-    // Each query is an independent HTTP request to Neon. Survives process restarts cleanly.
     try {
       const dbUrl = process.env.DATABASE_URL;
       console.log('[db] DATABASE_URL:', dbUrl ? dbUrl.slice(0, 50) + '...' : 'NOT FOUND');
       if (!dbUrl) throw new Error('DATABASE_URL not set');
+      const { default: pg } = await import('pg') as any;
       // @ts-ignore
-      const { neon, neonConfig } = await import('@neondatabase/serverless') as any;
-      // @ts-ignore
-      const { PrismaNeon } = await import('@prisma/adapter-neon') as any;
-      neonConfig.fetchConnectionCache = true;
-      const sql = neon(dbUrl);
-      const adapter = new PrismaNeon(sql);
+      const { PrismaPg } = await import('@prisma/adapter-pg') as any;
+      const pool = new pg.Pool({
+        connectionString: dbUrl,
+        ssl: { rejectUnauthorized: false },
+        max: 3,
+        idleTimeoutMillis: 20000,       // release idle connections after 20s (Neon closes at 5min)
+        connectionTimeoutMillis: 10000, // fail fast instead of hanging if Neon is unreachable
+      });
+      // Surface pool errors so they don't become unhandled rejections
+      pool.on('error', (err: any) => console.error('[db] pool error:', err.message));
+      const adapter = new PrismaPg(pool);
       prisma = new PrismaClient({ adapter } as any);
-      console.log('[db] Neon HTTP adapter configured');
+      console.log('[db] pg adapter configured');
 
       // Warm up Neon compute on startup so first login is fast
       prisma.$queryRaw`SELECT 1`
         .then(() => {
           console.log('[db] Neon warmed up');
-          // Ping every 4 min to prevent Neon compute from sleeping (sleeps after 5 min)
           setInterval(() => {
             prisma.$queryRaw`SELECT 1`.catch(() => {});
           }, 4 * 60 * 1000).unref();
