@@ -107,11 +107,24 @@ export default function Auth() {
         }
         setIsSignUp(false);
       } else {
-        const res = await fetch('/api/auth/login', {
+        let res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: cleanEmail, password }),
         });
+        // Auto-retry once if server reports DB cold-start
+        if (res.status === 500) {
+          const err = await res.json().catch(() => ({}));
+          if ((err.error || '').includes('starting up') || (err.error || '').includes('timeout')) {
+            setLoginStatus('Database waking up, retrying...');
+            await new Promise(r => setTimeout(r, 3000));
+            res = await fetch('/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: cleanEmail, password }),
+            });
+          }
+        }
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Login failed');
 

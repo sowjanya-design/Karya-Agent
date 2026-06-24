@@ -134,22 +134,33 @@ app.post("/api/auth/register", async (req, res) => {
   }
 });
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
 app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
-  try {
-    if (!prisma) return res.status(503).json({ error: "Server starting up, please retry in a moment" });
-    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    if (!user) return res.status(400).json({ error: "Invalid credentials" });
-    const validPassword = await bcrypt.compare(password, (user as any).passwordHash);
-    if (!validPassword) return res.status(400).json({ error: "Invalid credentials" });
-    const token = jwt.sign({ uid: user.uid, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-    let clientProfile = null;
-    if ((user as any).role === 'client') {
-      clientProfile = await prisma.client.findUnique({ where: { uid: (user as any).uid } });
+  // Retry once if DB times out on cold-start — second attempt hits warm Neon
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      if (!prisma) return res.status(503).json({ error: "Server starting up, please retry in a moment" });
+      const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+      if (!user) return res.status(400).json({ error: "Invalid credentials" });
+      const validPassword = await bcrypt.compare(password, (user as any).passwordHash);
+      if (!validPassword) return res.status(400).json({ error: "Invalid credentials" });
+      const token = jwt.sign({ uid: user.uid, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+      let clientProfile = null;
+      if ((user as any).role === 'client') {
+        clientProfile = await prisma.client.findUnique({ where: { uid: (user as any).uid } });
+      }
+      return res.json({ token, user, clientProfile });
+    } catch (error: any) {
+      const isTimeout = error.message?.includes('timeout') || error.code === '57014';
+      if (attempt === 1 && isTimeout) {
+        console.log('[login] DB cold-start timeout, retrying in 3s...');
+        await sleep(3000); // give Neon time to wake up
+        continue;
+      }
+      return res.status(500).json({ error: isTimeout ? 'Database is starting up, please try again' : error.message });
     }
-    res.json({ token, user, clientProfile });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
   }
 });
 
@@ -455,10 +466,10 @@ if (!process.env.VERCEL) {
         connectionString: dbUrl,
         ssl: { rejectUnauthorized: false },
         max: 3,
-        idleTimeoutMillis: 20000,       // release idle connections after 20s (Neon closes at 5min)
-        connectionTimeoutMillis: 10000, // fail fast instead of hanging if Neon is unreachable
+        idleTimeoutMillis: 20000,        // release idle connections after 20s
+        connectionTimeoutMillis: 10000,  // fail fast if can't connect
+        statement_timeout: 12000,        // kill any query hanging >12s (Neon cold-start)
       });
-      // Surface pool errors so they don't become unhandled rejections
       pool.on('error', (err: any) => console.error('[db] pool error:', err.message));
       const adapter = new PrismaPg(pool);
       prisma = new PrismaClient({ adapter } as any);
