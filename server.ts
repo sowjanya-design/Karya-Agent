@@ -30,19 +30,26 @@ const __dirname = path.dirname(__filename);
 let prisma: PrismaClient = null!;
 let dbReady = false;
 
+let warmingUp = false;
 async function warmupNeon() {
-  for (let i = 1; i <= 5; i++) {
+  if (warmingUp || !prisma) return;
+  warmingUp = true;
+  console.log('[db] starting Neon warmup...');
+  for (let i = 1; i <= 10; i++) {
     try {
       await prisma.$queryRaw`SELECT 1`;
       dbReady = true;
+      warmingUp = false;
       console.log(`[db] Neon warmed up ✓ (attempt ${i})`);
       return;
     } catch (e: any) {
-      console.error(`[db] warmup attempt ${i} failed: ${e.message}`);
+      console.error(`[db] warmup attempt ${i}/10 failed: ${e.message}`);
       dbReady = false;
-      if (i < 5) await new Promise(r => setTimeout(r, 5000));
+      if (i < 10) await new Promise(r => setTimeout(r, 8000));
     }
   }
+  warmingUp = false;
+  console.error('[db] warmup failed after 10 attempts');
 };
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
@@ -109,11 +116,10 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Ping — responds instantly so UptimeRobot never times out.
-// Returns dbReady so the login page knows when DB is warm.
+// Ping — responds instantly (UptimeRobot + client polling).
+// warmupNeon() manages DB state; don't fire extra queries here.
 app.get("/api/ping", (_req, res) => {
   res.json({ ok: true, dbReady });
-  if (prisma && !dbReady) prisma.$queryRaw`SELECT 1`.catch(() => {});
 });
 
 app.get("/api/debug/env", (req, res) => {
@@ -483,9 +489,10 @@ if (!process.env.VERCEL) {
       const pool = new pgMod.Pool({
         connectionString: dbUrl,
         ssl: { rejectUnauthorized: false },
-        max: 3,
-        idleTimeoutMillis: 20000,
-        connectionTimeoutMillis: 15000,
+        max: 5,
+        idleTimeoutMillis: 30000,
+        // No connectionTimeoutMillis — let Neon cold-start take as long as needed
+        // warmupNeon() handles the wait; login button stays disabled until ready
       });
       pool.on('error', (err: any) => console.error('[db] pool error:', err.message));
       const adapter = new PrismaPg(pool);
@@ -507,14 +514,18 @@ if (!process.env.VERCEL) {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`✅ Server running on http://localhost:${PORT}`);
 
-      // Self-ping every 4 minutes — keeps Hostinger process alive AND keeps
-      // Neon warm. No external keepalive service needed.
-      setInterval(() => {
-        fetch(`http://localhost:${PORT}/api/ping`)
-          .then(r => r.json())
-          .then((d: any) => { if (!d.dbReady && prisma) warmupNeon(); })
-          .catch(() => {});
-      }, 4 * 60 * 1000);
+      // Self-ping every 3 minutes keeps Hostinger process alive.
+      // Also runs a direct SELECT 1 to keep Neon warm (no HTTP overhead).
+      setInterval(async () => {
+        if (!prisma) return;
+        try {
+          await prisma.$queryRaw`SELECT 1`;
+          dbReady = true;
+        } catch {
+          dbReady = false;
+          warmupNeon();
+        }
+      }, 3 * 60 * 1000);
     });
   })();
 }
