@@ -28,7 +28,22 @@ const __dirname = path.dirname(__filename);
 
 // wasm engine requires a driver adapter — assigned in the startup IIFE before app.listen()
 let prisma: PrismaClient = null!;
-let dbReady = false; // true once first SELECT 1 succeeds after cold-start;
+let dbReady = false;
+
+async function warmupNeon() {
+  for (let i = 1; i <= 5; i++) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      dbReady = true;
+      console.log(`[db] Neon warmed up ✓ (attempt ${i})`);
+      return;
+    } catch (e: any) {
+      console.error(`[db] warmup attempt ${i} failed: ${e.message}`);
+      dbReady = false;
+      if (i < 5) await new Promise(r => setTimeout(r, 5000));
+    }
+  }
+};
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
 
@@ -477,18 +492,8 @@ if (!process.env.VERCEL) {
       prisma = new PrismaClient({ adapter } as any);
       console.log('[db] pg adapter configured');
 
-      // Warm up Neon compute on startup; set dbReady flag so login can proceed
-      prisma.$queryRaw`SELECT 1`
-        .then(() => {
-          dbReady = true;
-          console.log('[db] Neon warmed up ✓');
-          setInterval(() => {
-            prisma.$queryRaw`SELECT 1`
-              .then(() => { dbReady = true; })
-              .catch(() => { dbReady = false; });
-          }, 4 * 60 * 1000).unref();
-        })
-        .catch((e: any) => console.error('[db] warm-up failed:', e.message));
+      // Warm up Neon on startup with retries
+      warmupNeon();
     } catch (e: any) {
       console.error('[db] init failed, server still starting:', e.message);
       // prisma stays null — routes will return 500 JSON, not crash the server
@@ -501,6 +506,15 @@ if (!process.env.VERCEL) {
     });
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`✅ Server running on http://localhost:${PORT}`);
+
+      // Self-ping every 4 minutes — keeps Hostinger process alive AND keeps
+      // Neon warm. No external keepalive service needed.
+      setInterval(() => {
+        fetch(`http://localhost:${PORT}/api/ping`)
+          .then(r => r.json())
+          .then((d: any) => { if (!d.dbReady && prisma) warmupNeon(); })
+          .catch(() => {});
+      }, 4 * 60 * 1000);
     });
   })();
 }
