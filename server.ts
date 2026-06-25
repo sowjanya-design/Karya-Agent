@@ -117,8 +117,7 @@ app.use('/api', (_req, res, next) => {
 // Debug: shows exactly what happened during DB init
 let dbInitError = '';
 app.get("/api/debug/db", async (_req, res) => {
-  const checks: any = { build: 'http-v2', prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
-  try { checks.adapterNeonExports = Object.keys(await import('@prisma/adapter-neon')).join(','); } catch (e: any) { checks.adapterNeonError = e.message; }
+  const checks: any = { build: 'mysql-v1', prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
   // Live query test over the configured adapter
   if (prisma) {
     try {
@@ -519,13 +518,23 @@ if (!process.env.VERCEL) {
       console.log('[db] DATABASE_URL:', dbUrl ? dbUrl.slice(0, 30) + '...' : 'NOT FOUND');
       if (!dbUrl) throw new Error('DATABASE_URL not set');
 
-      // Local MySQL (Hostinger) — standard Prisma connector, no driver adapter,
-      // no wasm engine, no warmup. The DB is on the same host so the connection
-      // is instant and never blocked by an outbound firewall.
-      prisma = new PrismaClient();
-      dbAdapter = 'mysql';
+      // Local MySQL/MariaDB (Hostinger) via the wasm engine + mariadb driver
+      // adapter. The native query engine PANICs on this host ("timer has gone
+      // away"), so we run the query engine in WASM and connect over local TCP.
+      const { PrismaMariaDb } = await import('@prisma/adapter-mariadb') as any;
+      const u = new URL(dbUrl);
+      const adapter = new PrismaMariaDb({
+        host: u.hostname,
+        port: u.port ? Number(u.port) : 3306,
+        user: decodeURIComponent(u.username),
+        password: decodeURIComponent(u.password),
+        database: u.pathname.replace(/^\//, ''),
+        connectionLimit: 5,
+      });
+      prisma = new PrismaClient({ adapter } as any);
+      dbAdapter = 'mariadb';
       dbReady = true;
-      console.log('[db] MySQL PrismaClient configured');
+      console.log('[db] MariaDB adapter configured');
 
       // Ensure admin accounts exist. Runs from the live server (which can always
       // reach localhost MySQL) so admins are guaranteed even if the build-phase

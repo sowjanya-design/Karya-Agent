@@ -86,12 +86,7 @@ app.use("/api", (_req, res, next) => {
 });
 var dbInitError = "";
 app.get("/api/debug/db", async (_req, res) => {
-  const checks = { build: "http-v2", prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
-  try {
-    checks.adapterNeonExports = Object.keys(await import("@prisma/adapter-neon")).join(",");
-  } catch (e) {
-    checks.adapterNeonError = e.message;
-  }
+  const checks = { build: "mysql-v1", prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
   if (prisma) {
     try {
       await prisma.$queryRaw`SELECT 1`;
@@ -480,10 +475,20 @@ if (!process.env.VERCEL) {
       const dbUrl = process.env.DATABASE_URL;
       console.log("[db] DATABASE_URL:", dbUrl ? dbUrl.slice(0, 30) + "..." : "NOT FOUND");
       if (!dbUrl) throw new Error("DATABASE_URL not set");
-      prisma = new PrismaClient();
-      dbAdapter = "mysql";
+      const { PrismaMariaDb } = await import("@prisma/adapter-mariadb");
+      const u = new URL(dbUrl);
+      const adapter = new PrismaMariaDb({
+        host: u.hostname,
+        port: u.port ? Number(u.port) : 3306,
+        user: decodeURIComponent(u.username),
+        password: decodeURIComponent(u.password),
+        database: u.pathname.replace(/^\//, ""),
+        connectionLimit: 5
+      });
+      prisma = new PrismaClient({ adapter });
+      dbAdapter = "mariadb";
       dbReady = true;
-      console.log("[db] MySQL PrismaClient configured");
+      console.log("[db] MariaDB adapter configured");
       ensureAdmins().catch((e) => console.error("[db] ensureAdmins failed:", e.message));
     } catch (e) {
       dbInitError = e.message;
