@@ -520,21 +520,34 @@ if (!process.env.VERCEL) {
       if (!dbUrl) throw new Error("DATABASE_URL not set");
       const { PrismaMariaDb } = await import("@prisma/adapter-mariadb");
       const u = new URL(dbUrl);
-      const host = u.hostname === "localhost" ? "127.0.0.1" : u.hostname;
-      const adapter = new PrismaMariaDb({
-        host,
-        port: u.port ? Number(u.port) : 3306,
+      const baseCfg = {
         user: decodeURIComponent(u.username),
         password: decodeURIComponent(u.password),
         database: u.pathname.replace(/^\//, ""),
         connectionLimit: 5,
         connectTimeout: 1e4,
         acquireTimeout: 1e4
+      };
+      const fsMod = await import("fs");
+      const socketPath = ["/var/lib/mysql/mysql.sock", "/tmp/mysql.sock", "/var/run/mysqld/mysqld.sock", "/run/mysqld/mysqld.sock"].find((p) => {
+        try {
+          return fsMod.existsSync(p);
+        } catch {
+          return false;
+        }
       });
+      if (socketPath) {
+        baseCfg.socketPath = socketPath;
+        dbAdapter = "mariadb-socket:" + socketPath;
+      } else {
+        baseCfg.host = u.hostname === "localhost" ? "127.0.0.1" : u.hostname;
+        baseCfg.port = u.port ? Number(u.port) : 3306;
+        dbAdapter = "mariadb-tcp:" + baseCfg.host;
+      }
+      const adapter = new PrismaMariaDb(baseCfg);
       prisma = new PrismaClient({ adapter });
-      dbAdapter = "mariadb@" + host;
       dbReady = true;
-      console.log("[db] MariaDB adapter configured (host=" + host + ")");
+      console.log("[db] MariaDB adapter configured (" + dbAdapter + ")");
       ensureAdmins().catch((e) => console.error("[db] ensureAdmins failed:", e.message));
     } catch (e) {
       dbInitError = e.message;

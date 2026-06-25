@@ -565,24 +565,32 @@ if (!process.env.VERCEL) {
       // away"), so we run the query engine in WASM and connect over local TCP.
       const { PrismaMariaDb } = await import('@prisma/adapter-mariadb') as any;
       const u = new URL(dbUrl);
-      // Force IPv4: 'localhost' can resolve to ::1 while MySQL listens only on
-      // 127.0.0.1, which makes the driver hang on connect. connectTimeout makes
-      // a bad connection error fast instead of hanging the request.
-      const host = u.hostname === 'localhost' ? '127.0.0.1' : u.hostname;
-      const adapter = new PrismaMariaDb({
-        host,
-        port: u.port ? Number(u.port) : 3306,
+      const baseCfg: any = {
         user: decodeURIComponent(u.username),
         password: decodeURIComponent(u.password),
         database: u.pathname.replace(/^\//, ''),
         connectionLimit: 5,
         connectTimeout: 10000,
         acquireTimeout: 10000,
-      });
+      };
+      // Prefer the Unix socket — the MySQL user is granted for @'localhost'
+      // (socket), not necessarily @'127.0.0.1' (TCP). Fall back to TCP if no
+      // socket is present.
+      const fsMod = await import('fs');
+      const socketPath = ['/var/lib/mysql/mysql.sock', '/tmp/mysql.sock', '/var/run/mysqld/mysqld.sock', '/run/mysqld/mysqld.sock']
+        .find(p => { try { return fsMod.existsSync(p); } catch { return false; } });
+      if (socketPath) {
+        baseCfg.socketPath = socketPath;
+        dbAdapter = 'mariadb-socket:' + socketPath;
+      } else {
+        baseCfg.host = u.hostname === 'localhost' ? '127.0.0.1' : u.hostname;
+        baseCfg.port = u.port ? Number(u.port) : 3306;
+        dbAdapter = 'mariadb-tcp:' + baseCfg.host;
+      }
+      const adapter = new PrismaMariaDb(baseCfg);
       prisma = new PrismaClient({ adapter } as any);
-      dbAdapter = 'mariadb@' + host;
       dbReady = true;
-      console.log('[db] MariaDB adapter configured (host=' + host + ')');
+      console.log('[db] MariaDB adapter configured (' + dbAdapter + ')');
 
       // Ensure admin accounts exist. Runs from the live server (which can always
       // reach localhost MySQL) so admins are guaranteed even if the build-phase
