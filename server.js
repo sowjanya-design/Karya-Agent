@@ -24,6 +24,24 @@ var __dirname = path.dirname(__filename);
 var prisma = null;
 var dbReady = false;
 var dbAdapter = "none";
+var reinitializing = false;
+async function reinitPrisma() {
+  if (reinitializing) return;
+  reinitializing = true;
+  try {
+    const adapterMod = await import("@prisma/adapter-neon");
+    const adapter = new adapterMod.PrismaNeonHTTP(process.env.DATABASE_URL);
+    const fresh = new PrismaClient({ adapter });
+    prisma = fresh;
+    dbAdapter = "neon-http";
+    console.log("[db] Prisma client (re)initialized");
+  } catch (e) {
+    dbInitError = e.message;
+    console.error("[db] reinitPrisma failed:", e.message);
+  } finally {
+    reinitializing = false;
+  }
+}
 var warmingUp = false;
 async function warmupNeon() {
   if (warmingUp) return;
@@ -41,6 +59,7 @@ async function warmupNeon() {
         try {
           await withDbTimeout(prisma.$queryRaw`SELECT 1`, 12e3);
         } catch {
+          await reinitPrisma();
         }
       }
       dbReady = true;
@@ -112,7 +131,7 @@ app.use("/api", (_req, res, next) => {
 });
 var dbInitError = "";
 app.get("/api/debug/db", async (_req, res) => {
-  const checks = { build: "neon-v3-freshconn", prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
+  const checks = { build: "neon-v4-selfheal", prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
   if (prisma) {
     try {
       await withDbTimeout(prisma.$queryRaw`SELECT 1`, 8e3);
@@ -446,8 +465,9 @@ app.get("/api/ping", (_req, res) => {
     lastPingTouch = t;
     withDbTimeout(prisma.$queryRaw`SELECT 1`, 9e3).then(() => {
       dbReady = true;
-    }).catch(() => {
+    }).catch(async () => {
       dbReady = false;
+      await reinitPrisma();
       warmupNeon();
     });
   }
@@ -521,6 +541,7 @@ app.post("/api/auth/login", async (req, res) => {
   } catch (error) {
     const warming = error instanceof DbWarmingError || error.message?.includes("timeout") || error.code === "57014";
     if (warming) {
+      await reinitPrisma();
       warmupNeon();
       return res.status(503).json({ error: "Server waking up, please retry in a few seconds", warming: true });
     }
@@ -540,6 +561,7 @@ app.get("/api/auth/me", authenticateToken, async (req, res) => {
   } catch (error) {
     const warming = error instanceof DbWarmingError || error.message?.includes("timeout") || error.code === "57014";
     if (warming) {
+      await reinitPrisma();
       warmupNeon();
       return res.status(503).json({ error: "Server waking up, please retry", warming: true });
     }
@@ -832,11 +854,7 @@ if (!process.env.VERCEL) {
       const dbUrl = process.env.DATABASE_URL;
       console.log("[db] DATABASE_URL:", dbUrl ? dbUrl.slice(0, 30) + "..." : "NOT FOUND");
       if (!dbUrl) throw new Error("DATABASE_URL not set");
-      const adapterMod = await import("@prisma/adapter-neon");
-      const adapter = new adapterMod.PrismaNeonHTTP(dbUrl);
-      prisma = new PrismaClient({ adapter });
-      dbAdapter = "neon-http";
-      console.log("[db] PrismaNeonHTTP adapter configured");
+      await reinitPrisma();
       warmupNeon();
       ensureAdmins().catch((e) => console.error("[db] ensureAdmins failed:", e.message));
     } catch (e) {
@@ -857,9 +875,10 @@ if (!process.env.VERCEL) {
           dbReady = true;
         } catch {
           dbReady = false;
+          await reinitPrisma();
           warmupNeon();
         }
-      }, 2 * 60 * 1e3);
+      }, 90 * 1e3);
     });
   })();
 }

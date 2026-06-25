@@ -34,6 +34,28 @@ let dbAdapter = 'none';
 // Wake Neon with fresh short HTTP pulses (AbortController-bounded) so a
 // suspended free-tier compute keeps getting wake signals instead of one
 // request hanging forever, then prime the Prisma adapter.
+// (Re)create the Prisma client with a fresh Neon HTTP adapter. A freshly
+// built client always queries fine; a long-lived one can start hanging every
+// query after idle, so we rebuild on demand to self-heal.
+let reinitializing = false;
+async function reinitPrisma() {
+  if (reinitializing) return;
+  reinitializing = true;
+  try {
+    const adapterMod = await import('@prisma/adapter-neon') as any;
+    const adapter = new adapterMod.PrismaNeonHTTP(process.env.DATABASE_URL);
+    const fresh = new PrismaClient({ adapter } as any);
+    prisma = fresh;
+    dbAdapter = 'neon-http';
+    console.log('[db] Prisma client (re)initialized');
+  } catch (e: any) {
+    dbInitError = e.message;
+    console.error('[db] reinitPrisma failed:', e.message);
+  } finally {
+    reinitializing = false;
+  }
+}
+
 let warmingUp = false;
 async function warmupNeon() {
   if (warmingUp) return;
@@ -47,7 +69,7 @@ async function warmupNeon() {
       const sql = neon(dbUrl, { fetchOptions: { signal: ctrl.signal } });
       await sql`SELECT 1`;
       clearTimeout(t);
-      if (prisma) { try { await withDbTimeout(prisma.$queryRaw`SELECT 1`, 12000); } catch {} }
+      if (prisma) { try { await withDbTimeout(prisma.$queryRaw`SELECT 1`, 12000); } catch { await reinitPrisma(); } }
       dbReady = true;
       warmingUp = false;
       console.log(`[db] Neon warmed up ✓ (attempt ${i})`);
@@ -142,7 +164,7 @@ app.use('/api', (_req, res, next) => {
 // Debug: shows exactly what happened during DB init
 let dbInitError = '';
 app.get("/api/debug/db", async (_req, res) => {
-  const checks: any = { build: 'neon-v3-freshconn', prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
+  const checks: any = { build: 'neon-v4-selfheal', prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
   // Live query test over the configured adapter (timed so it never hangs)
   if (prisma) {
     try {
@@ -453,7 +475,7 @@ app.get("/api/ping", (_req, res) => {
     lastPingTouch = t;
     withDbTimeout(prisma.$queryRaw`SELECT 1`, 9000)
       .then(() => { dbReady = true; })
-      .catch(() => { dbReady = false; warmupNeon(); });
+      .catch(async () => { dbReady = false; await reinitPrisma(); warmupNeon(); });
   }
   res.json({ ok: true, dbReady });
 });
@@ -527,7 +549,8 @@ app.post("/api/auth/login", async (req, res) => {
   } catch (error: any) {
     const warming = error instanceof DbWarmingError || error.message?.includes('timeout') || error.code === '57014';
     if (warming) {
-      warmupNeon(); // kick a background wake so subsequent retries succeed
+      await reinitPrisma(); // rebuild the (likely-stale) client so the retry succeeds
+      warmupNeon();
       return res.status(503).json({ error: "Server waking up, please retry in a few seconds", warming: true });
     }
     return res.status(500).json({ error: error.message });
@@ -547,6 +570,7 @@ app.get("/api/auth/me", authenticateToken, async (req: any, res: any) => {
   } catch (error: any) {
     const warming = error instanceof DbWarmingError || error.message?.includes('timeout') || error.code === '57014';
     if (warming) {
+      await reinitPrisma();
       warmupNeon();
       return res.status(503).json({ error: "Server waking up, please retry", warming: true });
     }
@@ -850,14 +874,10 @@ if (!process.env.VERCEL) {
       if (!dbUrl) throw new Error('DATABASE_URL not set');
 
       // Neon (Postgres) over HTTPS via PrismaNeonHTTP — the only transport that
-      // works from Hostinger (TCP/WebSocket are blocked). Reads AND writes work;
-      // the only downside is free-tier cold start, mitigated by warmup + an
-      // external uptime pinger.
-      const adapterMod = await import('@prisma/adapter-neon') as any;
-      const adapter = new adapterMod.PrismaNeonHTTP(dbUrl);
-      prisma = new PrismaClient({ adapter } as any);
-      dbAdapter = 'neon-http';
-      console.log('[db] PrismaNeonHTTP adapter configured');
+      // works from Hostinger (TCP/WebSocket are blocked). Reads AND writes work.
+      // The shared client can degrade after idle (queries start hanging); when
+      // that's detected we rebuild it (a fresh client always works).
+      await reinitPrisma();
       warmupNeon();
 
       // Ensure admin accounts exist. Runs from the live server (which can always
@@ -886,8 +906,8 @@ if (!process.env.VERCEL) {
       setInterval(async () => {
         if (!prisma || warmingUp) return;
         try { await withDbTimeout(prisma.$queryRaw`SELECT 1`, 10000); dbReady = true; }
-        catch { dbReady = false; warmupNeon(); }
-      }, 2 * 60 * 1000);
+        catch { dbReady = false; await reinitPrisma(); warmupNeon(); }
+      }, 90 * 1000);
     });
   })();
 }
