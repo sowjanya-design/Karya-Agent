@@ -130,6 +130,48 @@ app.get("/api/debug/db", async (_req, res) => {
   res.json(checks);
 });
 
+// Diagnostic: try every MySQL connection method and report which works.
+app.get("/api/debug/mysql", async (_req, res) => {
+  const out: any = {};
+  let mariadb: any;
+  try { mariadb = (await import('mariadb')) as any; mariadb = mariadb.default ?? mariadb; }
+  catch (e: any) { return res.json({ importError: e.message }); }
+
+  const u = new URL(process.env.DATABASE_URL || 'mysql://');
+  const base = {
+    user: decodeURIComponent(u.username),
+    password: decodeURIComponent(u.password),
+    database: u.pathname.replace(/^\//, ''),
+    connectTimeout: 6000,
+  };
+
+  // Which common sockets exist on disk?
+  const fs = await import('fs');
+  out.sockets = {};
+  for (const p of ['/var/run/mysqld/mysqld.sock', '/run/mysqld/mysqld.sock', '/tmp/mysql.sock', '/var/lib/mysql/mysql.sock', '/var/run/mysqld/mysqld10.sock']) {
+    try { out.sockets[p] = fs.existsSync(p); } catch { out.sockets[p] = 'err'; }
+  }
+
+  const tryConn = async (label: string, cfg: any) => {
+    const start = Date.now();
+    try {
+      const conn = await mariadb.createConnection(cfg);
+      await conn.query('SELECT 1');
+      await conn.end();
+      out[label] = `OK (${Date.now() - start}ms)`;
+    } catch (e: any) {
+      out[label] = `FAIL ${Date.now() - start}ms: ${e.code || ''} ${e.message}`.slice(0, 160);
+    }
+  };
+
+  await tryConn('tcp_127', { ...base, host: '127.0.0.1', port: 3306 });
+  await tryConn('tcp_localhost', { ...base, host: 'localhost', port: 3306 });
+  for (const p of Object.keys(out.sockets)) {
+    if (out.sockets[p] === true) await tryConn('socket_' + p, { ...base, socketPath: p });
+  }
+  res.json(out);
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
