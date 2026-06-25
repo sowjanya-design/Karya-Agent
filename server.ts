@@ -118,13 +118,13 @@ app.use('/api', (_req, res, next) => {
 let dbInitError = '';
 app.get("/api/debug/db", async (_req, res) => {
   const checks: any = { build: 'mysql-v1', prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
-  // Live query test over the configured adapter
+  // Live query test over the configured adapter (timed so it never hangs)
   if (prisma) {
     try {
-      await prisma.$queryRaw`SELECT 1`;
+      await withDbTimeout(prisma.$queryRaw`SELECT 1`, 8000);
       checks.liveQuery = 'ok';
     } catch (e: any) {
-      checks.liveQuery = 'FAIL: ' + e.message;
+      checks.liveQuery = 'FAIL: ' + (e.message || e);
     }
   }
   res.json(checks);
@@ -523,18 +523,24 @@ if (!process.env.VERCEL) {
       // away"), so we run the query engine in WASM and connect over local TCP.
       const { PrismaMariaDb } = await import('@prisma/adapter-mariadb') as any;
       const u = new URL(dbUrl);
+      // Force IPv4: 'localhost' can resolve to ::1 while MySQL listens only on
+      // 127.0.0.1, which makes the driver hang on connect. connectTimeout makes
+      // a bad connection error fast instead of hanging the request.
+      const host = u.hostname === 'localhost' ? '127.0.0.1' : u.hostname;
       const adapter = new PrismaMariaDb({
-        host: u.hostname,
+        host,
         port: u.port ? Number(u.port) : 3306,
         user: decodeURIComponent(u.username),
         password: decodeURIComponent(u.password),
         database: u.pathname.replace(/^\//, ''),
         connectionLimit: 5,
+        connectTimeout: 10000,
+        acquireTimeout: 10000,
       });
       prisma = new PrismaClient({ adapter } as any);
-      dbAdapter = 'mariadb';
+      dbAdapter = 'mariadb@' + host;
       dbReady = true;
-      console.log('[db] MariaDB adapter configured');
+      console.log('[db] MariaDB adapter configured (host=' + host + ')');
 
       // Ensure admin accounts exist. Runs from the live server (which can always
       // reach localhost MySQL) so admins are guaranteed even if the build-phase
