@@ -131,25 +131,42 @@ app.get("/api/debug/db", async (_req, res) => {
 });
 
 // One-time data migration: copy all rows from the old Neon (Postgres) DB
-// into the current MySQL DB. Reads Neon over HTTPS (the only transport that
-// works from this host) and writes via the configured Prisma (MySQL).
-// Protected by SETUP_SECRET. Idempotent (upsert by unique key).
-app.post("/api/admin/migrate-from-neon", async (req, res) => {
-  const { secret, neonUrl } = req.body || {};
-  if (!secret || secret !== process.env.SETUP_SECRET) {
-    return res.status(403).json({ error: "bad secret" });
-  }
-  if (!neonUrl || !/^postgres/.test(neonUrl)) {
-    return res.status(400).json({ error: "provide neonUrl (postgresql://...)" });
-  }
-  if (!prisma) return res.status(503).json({ error: "db not ready" });
+// into the current MySQL DB. Runs in the BACKGROUND (Neon free-tier cold
+// start + proxy timeouts make a synchronous request impossible). Wakes Neon
+// with short retry pulses first, then reads over HTTPS and upserts to MySQL.
+let migrationState: any = { phase: 'idle', counts: {}, errors: [], startedAt: null, finishedAt: null };
 
+async function wakeNeon(neon: any, neonUrl: string): Promise<boolean> {
+  for (let i = 1; i <= 40; i++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 10000);
+    try {
+      const sql = neon(neonUrl, { fetchOptions: { signal: ctrl.signal } });
+      await sql`SELECT 1`;
+      clearTimeout(t);
+      migrationState.phase = 'neon-awake';
+      return true;
+    } catch {
+      clearTimeout(t);
+      migrationState.phase = `waking-neon (${i}/40)`;
+      await new Promise(r => setTimeout(r, 4000));
+    }
+  }
+  return false;
+}
+
+async function runNeonMigration(neonUrl: string) {
   const counts: any = {};
   const errors: any[] = [];
+  migrationState = { phase: 'starting', counts, errors, startedAt: new Date().toISOString(), finishedAt: null };
   try {
     const { neon } = await import('@neondatabase/serverless') as any;
+    migrationState.phase = 'waking-neon';
+    const awake = await wakeNeon(neon, neonUrl);
+    if (!awake) { migrationState.phase = 'FAILED: could not wake Neon'; migrationState.finishedAt = new Date().toISOString(); return; }
     const sql = neon(neonUrl);
 
+    migrationState.phase = 'copying Users';
     // Order matters for foreign keys: Client before ClientJob.
     const users: any[] = await sql`SELECT * FROM "User"`;
     counts.users = 0;
@@ -175,6 +192,7 @@ app.post("/api/admin/migrate-from-neon", async (req, res) => {
       } catch (e: any) { errors.push(`user ${u.email}: ${e.message}`); }
     }
 
+    migrationState.phase = 'copying Clients';
     const clients: any[] = await sql`SELECT * FROM "Client"`;
     counts.clients = 0;
     for (const c of clients) {
@@ -258,10 +276,35 @@ app.post("/api/admin/migrate-from-neon", async (req, res) => {
       }
     } catch (e: any) { errors.push('PreRegistration table: ' + e.message); }
 
-    return res.json({ ok: true, counts, errorCount: errors.length, errors: errors.slice(0, 20) });
+    migrationState.phase = 'done';
+    migrationState.finishedAt = new Date().toISOString();
   } catch (e: any) {
-    return res.status(500).json({ error: e.message, counts, errors: errors.slice(0, 20) });
+    migrationState.phase = 'FAILED: ' + e.message;
+    migrationState.finishedAt = new Date().toISOString();
   }
+}
+
+app.post("/api/admin/migrate-from-neon", async (req, res) => {
+  const { secret, neonUrl } = req.body || {};
+  if (!secret || secret !== process.env.SETUP_SECRET) return res.status(403).json({ error: "bad secret" });
+  if (!neonUrl || !/^postgres/.test(neonUrl)) return res.status(400).json({ error: "provide neonUrl (postgresql://...)" });
+  if (!prisma) return res.status(503).json({ error: "db not ready" });
+  if (migrationState.phase !== 'idle' && migrationState.phase !== 'done' && !String(migrationState.phase).startsWith('FAILED')) {
+    return res.json({ started: false, alreadyRunning: true, phase: migrationState.phase, counts: migrationState.counts });
+  }
+  runNeonMigration(neonUrl); // fire-and-forget; poll status below
+  res.json({ started: true, statusUrl: "/api/admin/migrate-status" });
+});
+
+app.get("/api/admin/migrate-status", (_req, res) => {
+  res.json({
+    phase: migrationState.phase,
+    counts: migrationState.counts,
+    errorCount: (migrationState.errors || []).length,
+    errors: (migrationState.errors || []).slice(0, 20),
+    startedAt: migrationState.startedAt,
+    finishedAt: migrationState.finishedAt,
+  });
 });
 
 // Diagnostic: try every MySQL connection method and report which works.

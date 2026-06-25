@@ -97,20 +97,40 @@ app.get("/api/debug/db", async (_req, res) => {
   }
   res.json(checks);
 });
-app.post("/api/admin/migrate-from-neon", async (req, res) => {
-  const { secret, neonUrl } = req.body || {};
-  if (!secret || secret !== process.env.SETUP_SECRET) {
-    return res.status(403).json({ error: "bad secret" });
+var migrationState = { phase: "idle", counts: {}, errors: [], startedAt: null, finishedAt: null };
+async function wakeNeon(neon, neonUrl) {
+  for (let i = 1; i <= 40; i++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 1e4);
+    try {
+      const sql = neon(neonUrl, { fetchOptions: { signal: ctrl.signal } });
+      await sql`SELECT 1`;
+      clearTimeout(t);
+      migrationState.phase = "neon-awake";
+      return true;
+    } catch {
+      clearTimeout(t);
+      migrationState.phase = `waking-neon (${i}/40)`;
+      await new Promise((r) => setTimeout(r, 4e3));
+    }
   }
-  if (!neonUrl || !/^postgres/.test(neonUrl)) {
-    return res.status(400).json({ error: "provide neonUrl (postgresql://...)" });
-  }
-  if (!prisma) return res.status(503).json({ error: "db not ready" });
+  return false;
+}
+async function runNeonMigration(neonUrl) {
   const counts = {};
   const errors = [];
+  migrationState = { phase: "starting", counts, errors, startedAt: (/* @__PURE__ */ new Date()).toISOString(), finishedAt: null };
   try {
     const { neon } = await import("@neondatabase/serverless");
+    migrationState.phase = "waking-neon";
+    const awake = await wakeNeon(neon, neonUrl);
+    if (!awake) {
+      migrationState.phase = "FAILED: could not wake Neon";
+      migrationState.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
+      return;
+    }
     const sql = neon(neonUrl);
+    migrationState.phase = "copying Users";
     const users = await sql`SELECT * FROM "User"`;
     counts.users = 0;
     for (const u of users) {
@@ -144,6 +164,7 @@ app.post("/api/admin/migrate-from-neon", async (req, res) => {
         errors.push(`user ${u.email}: ${e.message}`);
       }
     }
+    migrationState.phase = "copying Clients";
     const clients = await sql`SELECT * FROM "Client"`;
     counts.clients = 0;
     for (const c of clients) {
@@ -258,10 +279,33 @@ app.post("/api/admin/migrate-from-neon", async (req, res) => {
     } catch (e) {
       errors.push("PreRegistration table: " + e.message);
     }
-    return res.json({ ok: true, counts, errorCount: errors.length, errors: errors.slice(0, 20) });
+    migrationState.phase = "done";
+    migrationState.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
   } catch (e) {
-    return res.status(500).json({ error: e.message, counts, errors: errors.slice(0, 20) });
+    migrationState.phase = "FAILED: " + e.message;
+    migrationState.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
   }
+}
+app.post("/api/admin/migrate-from-neon", async (req, res) => {
+  const { secret, neonUrl } = req.body || {};
+  if (!secret || secret !== process.env.SETUP_SECRET) return res.status(403).json({ error: "bad secret" });
+  if (!neonUrl || !/^postgres/.test(neonUrl)) return res.status(400).json({ error: "provide neonUrl (postgresql://...)" });
+  if (!prisma) return res.status(503).json({ error: "db not ready" });
+  if (migrationState.phase !== "idle" && migrationState.phase !== "done" && !String(migrationState.phase).startsWith("FAILED")) {
+    return res.json({ started: false, alreadyRunning: true, phase: migrationState.phase, counts: migrationState.counts });
+  }
+  runNeonMigration(neonUrl);
+  res.json({ started: true, statusUrl: "/api/admin/migrate-status" });
+});
+app.get("/api/admin/migrate-status", (_req, res) => {
+  res.json({
+    phase: migrationState.phase,
+    counts: migrationState.counts,
+    errorCount: (migrationState.errors || []).length,
+    errors: (migrationState.errors || []).slice(0, 20),
+    startedAt: migrationState.startedAt,
+    finishedAt: migrationState.finishedAt
+  });
 });
 app.get("/api/debug/mysql", async (_req, res) => {
   const out = {};
