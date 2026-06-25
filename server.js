@@ -379,19 +379,34 @@ app.get("/api/debug/mysql", async (_req, res) => {
   }
   const tryConn = async (label, cfg) => {
     const start = Date.now();
+    let conn;
     try {
-      const conn = await mariadb.createConnection(cfg);
+      conn = await mariadb.createConnection({ ...cfg, connectTimeout: 8e3 });
       await conn.query("SELECT 1");
-      await conn.end();
-      out[label] = `OK (${Date.now() - start}ms)`;
+      const readMs = Date.now() - start;
+      const w = Date.now();
+      const db = cfg.database;
+      await conn.query(`CREATE TABLE IF NOT EXISTS \`${db}\`.\`_wtest\` (x INT PRIMARY KEY)`);
+      await conn.query(`INSERT INTO \`${db}\`.\`_wtest\` (x) VALUES (1) ON DUPLICATE KEY UPDATE x=1`);
+      const got = await conn.query(`SELECT x FROM \`${db}\`.\`_wtest\` WHERE x=1`);
+      await conn.query(`DROP TABLE \`${db}\`.\`_wtest\``);
+      out[label] = `read OK ${readMs}ms; WRITE OK ${Date.now() - w}ms (got ${JSON.stringify(got?.[0]?.x)})`;
     } catch (e) {
       out[label] = `FAIL ${Date.now() - start}ms: ${e.code || ""} ${e.message}`.slice(0, 160);
+    } finally {
+      try {
+        if (conn) await conn.end();
+      } catch {
+      }
     }
   };
-  await tryConn("tcp_127", { ...base, host: "127.0.0.1", port: 3306 });
-  await tryConn("tcp_localhost", { ...base, host: "localhost", port: 3306 });
+  const cap = (label, p) => Promise.race([p, new Promise((r) => setTimeout(() => {
+    if (!out[label]) out[label] = "TIMEOUT-18s (hung)";
+    r(null);
+  }, 18e3))]);
+  await cap("tcp_127", tryConn("tcp_127", { ...base, host: "127.0.0.1", port: 3306 }));
   for (const p of Object.keys(out.sockets)) {
-    if (out.sockets[p] === true) await tryConn("socket_" + p, { ...base, socketPath: p });
+    if (out.sockets[p] === true) await cap("socket_" + p, tryConn("socket_" + p, { ...base, socketPath: p }));
   }
   res.json(out);
 });
