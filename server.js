@@ -112,7 +112,7 @@ app.use("/api", (_req, res, next) => {
 });
 var dbInitError = "";
 app.get("/api/debug/db", async (_req, res) => {
-  const checks = { build: "neon-v2", prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
+  const checks = { build: "neon-v3-freshconn", prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
   if (prisma) {
     try {
       await withDbTimeout(prisma.$queryRaw`SELECT 1`, 8e3);
@@ -821,6 +821,13 @@ if (!process.env.VERCEL) {
   (async () => {
     const PORT = parseInt(process.env.PORT || "3000", 10);
     const distPath = path.join(process.cwd(), "dist");
+    try {
+      const { setGlobalDispatcher, Agent } = await import("undici");
+      setGlobalDispatcher(new Agent({ keepAliveTimeout: 1e3, keepAliveMaxTimeout: 1e3, connect: { timeout: 1e4 } }));
+      console.log("[net] undici keep-alive minimized (fresh Neon connections)");
+    } catch (e) {
+      console.warn("[net] undici dispatcher config skipped:", e.message);
+    }
     try {
       const dbUrl = process.env.DATABASE_URL;
       console.log("[db] DATABASE_URL:", dbUrl ? dbUrl.slice(0, 30) + "..." : "NOT FOUND");

@@ -142,7 +142,7 @@ app.use('/api', (_req, res, next) => {
 // Debug: shows exactly what happened during DB init
 let dbInitError = '';
 app.get("/api/debug/db", async (_req, res) => {
-  const checks: any = { build: 'neon-v2', prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
+  const checks: any = { build: 'neon-v3-freshconn', prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
   // Live query test over the configured adapter (timed so it never hangs)
   if (prisma) {
     try {
@@ -830,6 +830,19 @@ if (!process.env.VERCEL) {
   (async () => {
     const PORT = parseInt(process.env.PORT || '3000', 10);
     const distPath = path.join(process.cwd(), "dist");
+
+    // Minimize HTTP keep-alive so Neon queries never reuse a stale socket.
+    // Symptom of the bug this fixes: queries work for a while, then EVERY
+    // prisma query hangs ~forever (the reused keep-alive socket to Neon went
+    // dead) while a fresh connection is instant. Short keepAlive => fresh
+    // connection per request, like curl.
+    try {
+      const { setGlobalDispatcher, Agent } = await import('undici') as any;
+      setGlobalDispatcher(new Agent({ keepAliveTimeout: 1000, keepAliveMaxTimeout: 1000, connect: { timeout: 10000 } }));
+      console.log('[net] undici keep-alive minimized (fresh Neon connections)');
+    } catch (e: any) {
+      console.warn('[net] undici dispatcher config skipped:', e.message);
+    }
 
     try {
       const dbUrl = process.env.DATABASE_URL;
