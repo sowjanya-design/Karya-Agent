@@ -26,7 +26,33 @@ var dbReady = false;
 var dbAdapter = "none";
 var warmingUp = false;
 async function warmupNeon() {
-  dbReady = true;
+  if (warmingUp) return;
+  warmingUp = true;
+  const dbUrl = process.env.DATABASE_URL;
+  for (let i = 1; i <= 30; i++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 12e3);
+    try {
+      const { neon } = await import("@neondatabase/serverless");
+      const sql = neon(dbUrl, { fetchOptions: { signal: ctrl.signal } });
+      await sql`SELECT 1`;
+      clearTimeout(t);
+      if (prisma) {
+        try {
+          await prisma.$queryRaw`SELECT 1`;
+        } catch {
+        }
+      }
+      dbReady = true;
+      warmingUp = false;
+      console.log(`[db] Neon warmed up \u2713 (attempt ${i})`);
+      return;
+    } catch {
+      clearTimeout(t);
+      dbReady = false;
+      if (i < 30) await new Promise((r) => setTimeout(r, 4e3));
+    }
+  }
   warmingUp = false;
 }
 async function ensureAdmins() {
@@ -788,42 +814,12 @@ if (!process.env.VERCEL) {
       const dbUrl = process.env.DATABASE_URL;
       console.log("[db] DATABASE_URL:", dbUrl ? dbUrl.slice(0, 30) + "..." : "NOT FOUND");
       if (!dbUrl) throw new Error("DATABASE_URL not set");
-      const { PrismaMariaDb } = await import("@prisma/adapter-mariadb");
-      const u = new URL(dbUrl);
-      const baseCfg = {
-        user: decodeURIComponent(u.username),
-        password: decodeURIComponent(u.password),
-        database: u.pathname.replace(/^\//, ""),
-        connectionLimit: 5,
-        connectTimeout: 1e4,
-        acquireTimeout: 1e4,
-        // The mariadb driver returns insertId/affected rows as BigInt by
-        // default; the Prisma adapter hangs serializing those, so ALL writes
-        // hang while reads work. Return plain numbers to fix writes.
-        bigIntAsNumber: true,
-        insertIdAsNumber: true,
-        decimalAsNumber: true
-      };
-      const fsMod = await import("fs");
-      const socketPath = ["/var/lib/mysql/mysql.sock", "/tmp/mysql.sock", "/var/run/mysqld/mysqld.sock", "/run/mysqld/mysqld.sock"].find((p) => {
-        try {
-          return fsMod.existsSync(p);
-        } catch {
-          return false;
-        }
-      });
-      if (socketPath) {
-        baseCfg.socketPath = socketPath;
-        dbAdapter = "mariadb-socket:" + socketPath;
-      } else {
-        baseCfg.host = u.hostname === "localhost" ? "127.0.0.1" : u.hostname;
-        baseCfg.port = u.port ? Number(u.port) : 3306;
-        dbAdapter = "mariadb-tcp:" + baseCfg.host;
-      }
-      const adapter = new PrismaMariaDb(baseCfg);
+      const adapterMod = await import("@prisma/adapter-neon");
+      const adapter = new adapterMod.PrismaNeonHTTP(dbUrl);
       prisma = new PrismaClient({ adapter });
-      dbReady = true;
-      console.log("[db] MariaDB adapter configured (" + dbAdapter + ")");
+      dbAdapter = "neon-http";
+      console.log("[db] PrismaNeonHTTP adapter configured");
+      warmupNeon();
       ensureAdmins().catch((e) => console.error("[db] ensureAdmins failed:", e.message));
     } catch (e) {
       dbInitError = e.message;
@@ -836,13 +832,15 @@ if (!process.env.VERCEL) {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`\u2705 Server running on http://localhost:${PORT}`);
       setInterval(async () => {
-        if (!prisma) return;
+        if (!prisma || warmingUp) return;
         try {
-          await prisma.$queryRaw`SELECT 1`;
+          await withDbTimeout(prisma.$queryRaw`SELECT 1`, 1e4);
           dbReady = true;
         } catch {
+          dbReady = false;
+          warmupNeon();
         }
-      }, 4 * 60 * 1e3);
+      }, 2 * 60 * 1e3);
     });
   })();
 }

@@ -31,10 +31,35 @@ let prisma: PrismaClient = null!;
 let dbReady = false;
 let dbAdapter = 'none';
 
-// Local MySQL (Hostinger) never sleeps and has no cold start, so no warmup
-// machinery is needed. Kept as a no-op so existing callers stay valid.
+// Wake Neon with fresh short HTTP pulses (AbortController-bounded) so a
+// suspended free-tier compute keeps getting wake signals instead of one
+// request hanging forever, then prime the Prisma adapter.
 let warmingUp = false;
-async function warmupNeon() { dbReady = true; warmingUp = false; }
+async function warmupNeon() {
+  if (warmingUp) return;
+  warmingUp = true;
+  const dbUrl = process.env.DATABASE_URL;
+  for (let i = 1; i <= 30; i++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 12000);
+    try {
+      const { neon } = await import('@neondatabase/serverless') as any;
+      const sql = neon(dbUrl, { fetchOptions: { signal: ctrl.signal } });
+      await sql`SELECT 1`;
+      clearTimeout(t);
+      if (prisma) { try { await prisma.$queryRaw`SELECT 1`; } catch {} }
+      dbReady = true;
+      warmingUp = false;
+      console.log(`[db] Neon warmed up ✓ (attempt ${i})`);
+      return;
+    } catch {
+      clearTimeout(t);
+      dbReady = false;
+      if (i < 30) await new Promise(r => setTimeout(r, 4000));
+    }
+  }
+  warmingUp = false;
+}
 
 // Idempotently create/refresh the admin accounts from the live server.
 async function ensureAdmins() {
@@ -800,43 +825,16 @@ if (!process.env.VERCEL) {
       console.log('[db] DATABASE_URL:', dbUrl ? dbUrl.slice(0, 30) + '...' : 'NOT FOUND');
       if (!dbUrl) throw new Error('DATABASE_URL not set');
 
-      // Local MySQL/MariaDB (Hostinger) via the wasm engine + mariadb driver
-      // adapter. The native query engine PANICs on this host ("timer has gone
-      // away"), so we run the query engine in WASM and connect over local TCP.
-      const { PrismaMariaDb } = await import('@prisma/adapter-mariadb') as any;
-      const u = new URL(dbUrl);
-      const baseCfg: any = {
-        user: decodeURIComponent(u.username),
-        password: decodeURIComponent(u.password),
-        database: u.pathname.replace(/^\//, ''),
-        connectionLimit: 5,
-        connectTimeout: 10000,
-        acquireTimeout: 10000,
-        // The mariadb driver returns insertId/affected rows as BigInt by
-        // default; the Prisma adapter hangs serializing those, so ALL writes
-        // hang while reads work. Return plain numbers to fix writes.
-        bigIntAsNumber: true,
-        insertIdAsNumber: true,
-        decimalAsNumber: true,
-      };
-      // Prefer the Unix socket — the MySQL user is granted for @'localhost'
-      // (socket), not necessarily @'127.0.0.1' (TCP). Fall back to TCP if no
-      // socket is present.
-      const fsMod = await import('fs');
-      const socketPath = ['/var/lib/mysql/mysql.sock', '/tmp/mysql.sock', '/var/run/mysqld/mysqld.sock', '/run/mysqld/mysqld.sock']
-        .find(p => { try { return fsMod.existsSync(p); } catch { return false; } });
-      if (socketPath) {
-        baseCfg.socketPath = socketPath;
-        dbAdapter = 'mariadb-socket:' + socketPath;
-      } else {
-        baseCfg.host = u.hostname === 'localhost' ? '127.0.0.1' : u.hostname;
-        baseCfg.port = u.port ? Number(u.port) : 3306;
-        dbAdapter = 'mariadb-tcp:' + baseCfg.host;
-      }
-      const adapter = new PrismaMariaDb(baseCfg);
+      // Neon (Postgres) over HTTPS via PrismaNeonHTTP — the only transport that
+      // works from Hostinger (TCP/WebSocket are blocked). Reads AND writes work;
+      // the only downside is free-tier cold start, mitigated by warmup + an
+      // external uptime pinger.
+      const adapterMod = await import('@prisma/adapter-neon') as any;
+      const adapter = new adapterMod.PrismaNeonHTTP(dbUrl);
       prisma = new PrismaClient({ adapter } as any);
-      dbReady = true;
-      console.log('[db] MariaDB adapter configured (' + dbAdapter + ')');
+      dbAdapter = 'neon-http';
+      console.log('[db] PrismaNeonHTTP adapter configured');
+      warmupNeon();
 
       // Ensure admin accounts exist. Runs from the live server (which can always
       // reach localhost MySQL) so admins are guaranteed even if the build-phase
@@ -855,13 +853,14 @@ if (!process.env.VERCEL) {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`✅ Server running on http://localhost:${PORT}`);
 
-      // Light keepalive every 4 min just to keep the Hostinger Node process
-      // from idling out. Local MySQL never sleeps, so this is only about the
-      // process, not the DB.
+      // Keepalive every 2 min (under Neon's 5-min sleep) to keep both the
+      // Hostinger Node process and the Neon compute warm. On failure, kick a
+      // full warmup so the next request isn't cold.
       setInterval(async () => {
-        if (!prisma) return;
-        try { await prisma.$queryRaw`SELECT 1`; dbReady = true; } catch { /* ignore */ }
-      }, 4 * 60 * 1000);
+        if (!prisma || warmingUp) return;
+        try { await withDbTimeout(prisma.$queryRaw`SELECT 1`, 10000); dbReady = true; }
+        catch { dbReady = false; warmupNeon(); }
+      }, 2 * 60 * 1000);
     });
   })();
 }
