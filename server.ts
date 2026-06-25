@@ -47,7 +47,7 @@ async function warmupNeon() {
       const sql = neon(dbUrl, { fetchOptions: { signal: ctrl.signal } });
       await sql`SELECT 1`;
       clearTimeout(t);
-      if (prisma) { try { await prisma.$queryRaw`SELECT 1`; } catch {} }
+      if (prisma) { try { await withDbTimeout(prisma.$queryRaw`SELECT 1`, 12000); } catch {} }
       dbReady = true;
       warmingUp = false;
       console.log(`[db] Neon warmed up ✓ (attempt ${i})`);
@@ -142,7 +142,7 @@ app.use('/api', (_req, res, next) => {
 // Debug: shows exactly what happened during DB init
 let dbInitError = '';
 app.get("/api/debug/db", async (_req, res) => {
-  const checks: any = { build: 'mysql-v1', prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
+  const checks: any = { build: 'neon-v2', prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
   // Live query test over the configured adapter (timed so it never hangs)
   if (prisma) {
     try {

@@ -39,7 +39,7 @@ async function warmupNeon() {
       clearTimeout(t);
       if (prisma) {
         try {
-          await prisma.$queryRaw`SELECT 1`;
+          await withDbTimeout(prisma.$queryRaw`SELECT 1`, 12e3);
         } catch {
         }
       }
@@ -112,7 +112,7 @@ app.use("/api", (_req, res, next) => {
 });
 var dbInitError = "";
 app.get("/api/debug/db", async (_req, res) => {
-  const checks = { build: "mysql-v1", prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
+  const checks = { build: "neon-v2", prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
   if (prisma) {
     try {
       await withDbTimeout(prisma.$queryRaw`SELECT 1`, 8e3);

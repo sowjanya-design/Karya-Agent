@@ -7,7 +7,7 @@
     "dev": "vite",
     "dev:server": "tsx server.ts",
     "start": "node server.js",
-    "postinstall": "echo '[build] starting' && npx prisma generate && echo '[build] prisma done' && npm run build:all && echo '[build] complete'",
+    "postinstall": "echo '[build] starting' && rm -rf node_modules/.prisma && echo '[build] cleared stale client' && npx prisma generate && echo '[build] prisma done' && npm run build:all && echo '[build] complete'",
     "build": "vite build",
     "build:server": "esbuild server.ts --platform=node --format=esm --bundle --packages=external --external:@neondatabase/serverless --external:@prisma/adapter-neon --external:ws --external:@prisma/adapter-mariadb --external:mariadb --outfile=server.js",
     "build:all": "npm run build && npm run build:server",
