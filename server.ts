@@ -307,6 +307,61 @@ app.get("/api/admin/migrate-status", (_req, res) => {
   });
 });
 
+// Batch import: client (my sandbox) reads Neon and POSTs rows here in small
+// batches; we upsert them into MySQL synchronously and return a count. Robust
+// (no background state, no proxy timeout, no Neon dependence on this side).
+app.post("/api/admin/import-batch", async (req, res) => {
+  const { secret, table, rows } = req.body || {};
+  if (!secret || secret !== process.env.SETUP_SECRET) return res.status(403).json({ error: "bad secret" });
+  if (!prisma) return res.status(503).json({ error: "db not ready" });
+  if (!Array.isArray(rows)) return res.status(400).json({ error: "rows must be an array" });
+
+  let ok = 0;
+  const errors: string[] = [];
+  const d = (x: any) => (x === undefined ? null : x);
+  try {
+    for (const r of rows) {
+      try {
+        if (table === 'User') {
+          await prisma.user.upsert({
+            where: { email: r.email },
+            update: { uid: r.uid, role: r.role, displayName: d(r.displayName), passwordHash: d(r.passwordHash), assignedClients: r.assignedClients ?? undefined, isBanned: !!r.isBanned, isApproved: !!r.isApproved },
+            create: { id: r.id, uid: r.uid, email: r.email, role: r.role, displayName: d(r.displayName), passwordHash: d(r.passwordHash), assignedClients: r.assignedClients ?? undefined, isBanned: !!r.isBanned, isApproved: !!r.isApproved, createdAt: r.createdAt ? new Date(r.createdAt) : new Date() },
+          });
+        } else if (table === 'Client') {
+          await prisma.client.upsert({
+            where: { uid: r.uid },
+            update: { assignedEmployeeId: d(r.assignedEmployeeId), status: r.status, masterResumeStorageUrl: d(r.masterResumeStorageUrl), applicationData: r.applicationData ?? undefined, onboardingSkipped: !!r.onboardingSkipped },
+            create: { id: r.id, uid: r.uid, assignedEmployeeId: d(r.assignedEmployeeId), status: r.status, masterResumeStorageUrl: d(r.masterResumeStorageUrl), applicationData: r.applicationData ?? undefined, onboardingSkipped: !!r.onboardingSkipped, createdAt: r.createdAt ? new Date(r.createdAt) : new Date(), updatedAt: r.updatedAt ? new Date(r.updatedAt) : new Date() },
+          });
+        } else if (table === 'ClientJob') {
+          await prisma.clientJob.upsert({
+            where: { id: r.id },
+            update: { clientId: r.clientId, company: r.company, role: r.role, status: r.status, appliedDate: d(r.appliedDate), jobUrl: d(r.jobUrl), location: d(r.location), salary: d(r.salary), tailoredResumeUrl: d(r.tailoredResumeUrl) },
+            create: { id: r.id, clientId: r.clientId, company: r.company, role: r.role, status: r.status, appliedDate: d(r.appliedDate), jobUrl: d(r.jobUrl), location: d(r.location), salary: d(r.salary), tailoredResumeUrl: d(r.tailoredResumeUrl), createdAt: r.createdAt ? new Date(r.createdAt) : new Date(), updatedAt: r.updatedAt ? new Date(r.updatedAt) : new Date() },
+          });
+        } else if (table === 'ResumeHistory') {
+          await prisma.resumeHistory.upsert({
+            where: { id: r.id }, update: {},
+            create: { id: r.id, userId: r.userId, resumeText: r.resumeText, company: d(r.company), role: d(r.role), atsScore: r.atsScore ?? null, jobId: d(r.jobId), createdAt: r.createdAt ? new Date(r.createdAt) : new Date() },
+          });
+        } else if (table === 'PreRegistration') {
+          await prisma.preRegistration.upsert({
+            where: { email: r.email }, update: {},
+            create: { id: r.id, email: r.email, displayName: d(r.displayName), role: r.role, generatedPassword: r.generatedPassword, uid: d(r.uid), createdAt: r.createdAt ? new Date(r.createdAt) : new Date() },
+          });
+        } else {
+          return res.status(400).json({ error: "unknown table " + table });
+        }
+        ok++;
+      } catch (e: any) { errors.push(`${r.id || r.email}: ${e.message}`); }
+    }
+    res.json({ ok, errorCount: errors.length, errors: errors.slice(0, 10) });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message, ok, errors: errors.slice(0, 10) });
+  }
+});
+
 // Diagnostic: try every MySQL connection method and report which works.
 app.get("/api/debug/mysql", async (_req, res) => {
   const out: any = {};
