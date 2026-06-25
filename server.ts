@@ -812,6 +812,12 @@ if (!process.env.VERCEL) {
         connectionLimit: 5,
         connectTimeout: 10000,
         acquireTimeout: 10000,
+        // The mariadb driver returns insertId/affected rows as BigInt by
+        // default; the Prisma adapter hangs serializing those, so ALL writes
+        // hang while reads work. Return plain numbers to fix writes.
+        bigIntAsNumber: true,
+        insertIdAsNumber: true,
+        decimalAsNumber: true,
       };
       // Prefer the Unix socket — the MySQL user is granted for @'localhost'
       // (socket), not necessarily @'127.0.0.1' (TCP). Fall back to TCP if no

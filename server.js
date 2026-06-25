@@ -796,7 +796,13 @@ if (!process.env.VERCEL) {
         database: u.pathname.replace(/^\//, ""),
         connectionLimit: 5,
         connectTimeout: 1e4,
-        acquireTimeout: 1e4
+        acquireTimeout: 1e4,
+        // The mariadb driver returns insertId/affected rows as BigInt by
+        // default; the Prisma adapter hangs serializing those, so ALL writes
+        // hang while reads work. Return plain numbers to fix writes.
+        bigIntAsNumber: true,
+        insertIdAsNumber: true,
+        decimalAsNumber: true
       };
       const fsMod = await import("fs");
       const socketPath = ["/var/lib/mysql/mysql.sock", "/tmp/mysql.sock", "/var/run/mysqld/mysqld.sock", "/run/mysqld/mysqld.sock"].find((p) => {
