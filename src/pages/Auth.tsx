@@ -504,7 +504,7 @@ export default function Auth() {
               <div className="space-y-3">
                 <button
                   type="submit"
-                  disabled={isLoading || (!isSignUp && !dbReady)}
+                  disabled={isLoading}
                   className={`w-full relative overflow-hidden group py-5 rounded-xl font-black text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 disabled:opacity-50 hover:scale-[1.01] ${currentTheme.buttonBg}`}
                 >
                   {isLoading ? (
@@ -514,11 +514,6 @@ export default function Auth() {
                         {loginStatus || (isSignUp ? 'Creating account...' : 'Logging in...')}
                       </span>
                     </span>
-                  ) : !isSignUp && !dbReady ? (
-                    <span className="flex items-center gap-3">
-                      <div className="w-4 h-4 border-2 border-bg-deep/20 border-t-bg-deep rounded-full animate-spin" />
-                      Server warming up...
-                    </span>
                   ) : (
                     <>
                       {isSignUp ? 'Create Account' : 'Sign In'}
@@ -526,6 +521,12 @@ export default function Auth() {
                     </>
                   )}
                 </button>
+
+                {!isSignUp && !dbReady && (
+                  <p className="text-[10px] text-center text-brand-muted/70 tracking-wide">
+                    Waking the server — your first login may take a few seconds.
+                  </p>
+                )}
 
                 {activeTab === 'client' && (
                   <button
