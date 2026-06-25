@@ -443,7 +443,18 @@ app.get("/api/health", (_req, res) => {
 
 // Ping — responds instantly (UptimeRobot + client polling).
 // warmupNeon() manages DB state; don't fire extra queries here.
+// Ping — responds instantly. Also keeps Neon warm: at most once every 60s it
+// fires a background SELECT 1 (non-blocking) so an external uptime monitor
+// pointed here actually prevents cold starts, and dbReady reflects reality.
+let lastPingTouch = 0;
 app.get("/api/ping", (_req, res) => {
+  const t = Date.now();
+  if (prisma && !warmingUp && t - lastPingTouch > 60000) {
+    lastPingTouch = t;
+    withDbTimeout(prisma.$queryRaw`SELECT 1`, 9000)
+      .then(() => { dbReady = true; })
+      .catch(() => { dbReady = false; warmupNeon(); });
+  }
   res.json({ ok: true, dbReady });
 });
 
@@ -848,6 +859,9 @@ if (!process.env.VERCEL) {
     // Start listening regardless of DB state.
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
+      // Never cache index.html so a new deploy's frontend (hashed assets) is
+      // always picked up — prevents users getting stuck on a stale login page.
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.sendFile(path.join(distPath, "index.html"));
     });
     app.listen(PORT, "0.0.0.0", () => {

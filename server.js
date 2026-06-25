@@ -439,7 +439,18 @@ app.get("/api/debug/mysql", async (_req, res) => {
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
 });
+var lastPingTouch = 0;
 app.get("/api/ping", (_req, res) => {
+  const t = Date.now();
+  if (prisma && !warmingUp && t - lastPingTouch > 6e4) {
+    lastPingTouch = t;
+    withDbTimeout(prisma.$queryRaw`SELECT 1`, 9e3).then(() => {
+      dbReady = true;
+    }).catch(() => {
+      dbReady = false;
+      warmupNeon();
+    });
+  }
   res.json({ ok: true, dbReady });
 });
 app.get("/api/debug/env", (req, res) => {
@@ -827,6 +838,7 @@ if (!process.env.VERCEL) {
     }
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
+      res.set("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(path.join(distPath, "index.html"));
     });
     app.listen(PORT, "0.0.0.0", () => {
