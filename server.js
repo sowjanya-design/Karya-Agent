@@ -48,6 +48,19 @@ async function warmupNeon() {
   for (let i = 1; i <= 30; i++) {
     const ok = await neonWakeAttempt(12e3);
     if (ok) {
+      if (prisma) {
+        try {
+          await withDbTimeout(prisma.$queryRaw`SELECT 1`, 2e4);
+          console.log("[db] Prisma adapter primed \u2713");
+        } catch (pe) {
+          console.warn("[db] Prisma prime slow/failed, will keep trying:", pe.message);
+          dbReady = false;
+          if (i < 30) {
+            await new Promise((r) => setTimeout(r, 4e3));
+            continue;
+          }
+        }
+      }
       dbReady = true;
       warmingUp = false;
       console.log(`[db] Neon warmed up \u2713 (attempt ${i})`);
@@ -163,7 +176,7 @@ var DbWarmingError = class extends Error {
     super("db-warming");
   }
 };
-function withDbTimeout(p, ms = 9e3) {
+function withDbTimeout(p, ms = 15e3) {
   return Promise.race([
     p,
     new Promise((_, rej) => setTimeout(() => rej(new DbWarmingError()), ms))
@@ -540,15 +553,15 @@ if (!process.env.VERCEL) {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`\u2705 Server running on http://localhost:${PORT}`);
       setInterval(async () => {
-        if (!prisma) return;
+        if (!prisma || warmingUp) return;
         try {
-          await prisma.$queryRaw`SELECT 1`;
+          await withDbTimeout(prisma.$queryRaw`SELECT 1`, 1e4);
           dbReady = true;
         } catch {
           dbReady = false;
           warmupNeon();
         }
-      }, 3 * 60 * 1e3);
+      }, 2 * 60 * 1e3);
     });
   })();
 }

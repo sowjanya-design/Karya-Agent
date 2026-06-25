@@ -62,6 +62,19 @@ async function warmupNeon() {
   for (let i = 1; i <= 30; i++) {
     const ok = await neonWakeAttempt(12000);
     if (ok) {
+      // Compute is awake. Now prime the ACTUAL Prisma adapter connection so the
+      // first real login query is fast — waking compute via a separate neon()
+      // client doesn't warm Prisma's own adapter (that was the 9s-timeout bug).
+      if (prisma) {
+        try {
+          await withDbTimeout(prisma.$queryRaw`SELECT 1`, 20000);
+          console.log('[db] Prisma adapter primed ✓');
+        } catch (pe: any) {
+          console.warn('[db] Prisma prime slow/failed, will keep trying:', pe.message);
+          dbReady = false;
+          if (i < 30) { await new Promise(r => setTimeout(r, 4000)); continue; }
+        }
+      }
       dbReady = true;
       warmingUp = false;
       console.log(`[db] Neon warmed up ✓ (attempt ${i})`);
@@ -205,7 +218,7 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 // request for 90s. On timeout we kick off warmup and return a fast 503 the
 // frontend retries — far better UX than a hung connection.
 class DbWarmingError extends Error { constructor() { super('db-warming'); } }
-function withDbTimeout<T>(p: Promise<T>, ms = 9000): Promise<T> {
+function withDbTimeout<T>(p: Promise<T>, ms = 15000): Promise<T> {
   return Promise.race([
     p,
     new Promise<T>((_, rej) => setTimeout(() => rej(new DbWarmingError()), ms)),
@@ -600,16 +613,19 @@ if (!process.env.VERCEL) {
 
       // Self-ping every 3 minutes keeps Hostinger process alive.
       // Also runs a direct SELECT 1 to keep Neon warm (no HTTP overhead).
+      // Keepalive every 2 min (under Neon's 5-min sleep) so the DB stays warm
+      // as long as the Node process is alive. Wrapped in a timeout so a cold
+      // query can't hang the interval; on failure it triggers a full warmup.
       setInterval(async () => {
-        if (!prisma) return;
+        if (!prisma || warmingUp) return;
         try {
-          await prisma.$queryRaw`SELECT 1`;
+          await withDbTimeout(prisma.$queryRaw`SELECT 1`, 10000);
           dbReady = true;
         } catch {
           dbReady = false;
           warmupNeon();
         }
-      }, 3 * 60 * 1000);
+      }, 2 * 60 * 1000);
     });
   })();
 }
