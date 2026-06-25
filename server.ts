@@ -316,43 +316,38 @@ app.post("/api/admin/import-batch", async (req, res) => {
   if (!prisma) return res.status(503).json({ error: "db not ready" });
   if (!Array.isArray(rows)) return res.status(400).json({ error: "rows must be an array" });
 
+  // Use RAW single-statement INSERTs (autocommit). Prisma's upsert wraps an
+  // interactive transaction that hangs over the mariadb socket adapter, but
+  // raw INSERTs work (same path as a phpMyAdmin import).
+  const schema: Record<string, { cols: string[]; conflict: string; json?: string[]; bool?: string[]; date?: string[] }> = {
+    User: { cols: ['id','uid','email','role','displayName','passwordHash','assignedClients','isBanned','isApproved','createdAt'], conflict: 'email', json: ['assignedClients'], bool: ['isBanned','isApproved'], date: ['createdAt'] },
+    Client: { cols: ['id','uid','assignedEmployeeId','status','masterResumeStorageUrl','applicationData','onboardingSkipped','createdAt','updatedAt'], conflict: 'uid', json: ['applicationData'], bool: ['onboardingSkipped'], date: ['createdAt','updatedAt'] },
+    ClientJob: { cols: ['id','clientId','company','role','status','appliedDate','jobUrl','location','salary','tailoredResumeUrl','createdAt','updatedAt'], conflict: 'id', date: ['createdAt','updatedAt'] },
+    ResumeHistory: { cols: ['id','userId','resumeText','company','role','atsScore','jobId','createdAt'], conflict: 'id', date: ['createdAt'] },
+    PreRegistration: { cols: ['id','email','displayName','role','generatedPassword','uid','createdAt'], conflict: 'email', date: ['createdAt'] },
+  };
+  const def = schema[table];
+  if (!def) return res.status(400).json({ error: "unknown table " + table });
+
+  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const lit = (col: string, val: any): string => {
+    if (val === null || val === undefined) return 'NULL';
+    if (def.bool?.includes(col)) return val ? '1' : '0';
+    if (def.json?.includes(col)) return `'${esc(JSON.stringify(val))}'`;
+    if (def.date?.includes(col)) { const d = new Date(val); return isNaN(+d) ? 'NULL' : `'${d.toISOString().slice(0,23).replace('T',' ')}'`; }
+    return `'${esc(String(val))}'`;
+  };
+
   let ok = 0;
   const errors: string[] = [];
-  const d = (x: any) => (x === undefined ? null : x);
   try {
     for (const r of rows) {
       try {
-        if (table === 'User') {
-          await prisma.user.upsert({
-            where: { email: r.email },
-            update: { uid: r.uid, role: r.role, displayName: d(r.displayName), passwordHash: d(r.passwordHash), assignedClients: r.assignedClients ?? undefined, isBanned: !!r.isBanned, isApproved: !!r.isApproved },
-            create: { id: r.id, uid: r.uid, email: r.email, role: r.role, displayName: d(r.displayName), passwordHash: d(r.passwordHash), assignedClients: r.assignedClients ?? undefined, isBanned: !!r.isBanned, isApproved: !!r.isApproved, createdAt: r.createdAt ? new Date(r.createdAt) : new Date() },
-          });
-        } else if (table === 'Client') {
-          await prisma.client.upsert({
-            where: { uid: r.uid },
-            update: { assignedEmployeeId: d(r.assignedEmployeeId), status: r.status, masterResumeStorageUrl: d(r.masterResumeStorageUrl), applicationData: r.applicationData ?? undefined, onboardingSkipped: !!r.onboardingSkipped },
-            create: { id: r.id, uid: r.uid, assignedEmployeeId: d(r.assignedEmployeeId), status: r.status, masterResumeStorageUrl: d(r.masterResumeStorageUrl), applicationData: r.applicationData ?? undefined, onboardingSkipped: !!r.onboardingSkipped, createdAt: r.createdAt ? new Date(r.createdAt) : new Date(), updatedAt: r.updatedAt ? new Date(r.updatedAt) : new Date() },
-          });
-        } else if (table === 'ClientJob') {
-          await prisma.clientJob.upsert({
-            where: { id: r.id },
-            update: { clientId: r.clientId, company: r.company, role: r.role, status: r.status, appliedDate: d(r.appliedDate), jobUrl: d(r.jobUrl), location: d(r.location), salary: d(r.salary), tailoredResumeUrl: d(r.tailoredResumeUrl) },
-            create: { id: r.id, clientId: r.clientId, company: r.company, role: r.role, status: r.status, appliedDate: d(r.appliedDate), jobUrl: d(r.jobUrl), location: d(r.location), salary: d(r.salary), tailoredResumeUrl: d(r.tailoredResumeUrl), createdAt: r.createdAt ? new Date(r.createdAt) : new Date(), updatedAt: r.updatedAt ? new Date(r.updatedAt) : new Date() },
-          });
-        } else if (table === 'ResumeHistory') {
-          await prisma.resumeHistory.upsert({
-            where: { id: r.id }, update: {},
-            create: { id: r.id, userId: r.userId, resumeText: r.resumeText, company: d(r.company), role: d(r.role), atsScore: r.atsScore ?? null, jobId: d(r.jobId), createdAt: r.createdAt ? new Date(r.createdAt) : new Date() },
-          });
-        } else if (table === 'PreRegistration') {
-          await prisma.preRegistration.upsert({
-            where: { email: r.email }, update: {},
-            create: { id: r.id, email: r.email, displayName: d(r.displayName), role: r.role, generatedPassword: r.generatedPassword, uid: d(r.uid), createdAt: r.createdAt ? new Date(r.createdAt) : new Date() },
-          });
-        } else {
-          return res.status(400).json({ error: "unknown table " + table });
-        }
+        const colSql = def.cols.map(c => '`'+c+'`').join(',');
+        const valSql = def.cols.map(c => lit(c, r[c])).join(',');
+        const upd = def.cols.filter(c => c !== def.conflict && c !== 'id').map(c => '`'+c+'`=VALUES(`'+c+'`)').join(',');
+        const sql = `INSERT INTO \`${table}\` (${colSql}) VALUES (${valSql}) ON DUPLICATE KEY UPDATE ${upd}`;
+        await prisma.$executeRawUnsafe(sql);
         ok++;
       } catch (e: any) { errors.push(`${r.id || r.email}: ${e.message}`); }
     }
