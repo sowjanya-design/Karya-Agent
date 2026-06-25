@@ -130,6 +130,140 @@ app.get("/api/debug/db", async (_req, res) => {
   res.json(checks);
 });
 
+// One-time data migration: copy all rows from the old Neon (Postgres) DB
+// into the current MySQL DB. Reads Neon over HTTPS (the only transport that
+// works from this host) and writes via the configured Prisma (MySQL).
+// Protected by SETUP_SECRET. Idempotent (upsert by unique key).
+app.post("/api/admin/migrate-from-neon", async (req, res) => {
+  const { secret, neonUrl } = req.body || {};
+  if (!secret || secret !== process.env.SETUP_SECRET) {
+    return res.status(403).json({ error: "bad secret" });
+  }
+  if (!neonUrl || !/^postgres/.test(neonUrl)) {
+    return res.status(400).json({ error: "provide neonUrl (postgresql://...)" });
+  }
+  if (!prisma) return res.status(503).json({ error: "db not ready" });
+
+  const counts: any = {};
+  const errors: any[] = [];
+  try {
+    const { neon } = await import('@neondatabase/serverless') as any;
+    const sql = neon(neonUrl);
+
+    // Order matters for foreign keys: Client before ClientJob.
+    const users: any[] = await sql`SELECT * FROM "User"`;
+    counts.users = 0;
+    for (const u of users) {
+      try {
+        await prisma.user.upsert({
+          where: { email: u.email },
+          update: {
+            uid: u.uid, role: u.role, displayName: u.displayName ?? null,
+            passwordHash: u.passwordHash ?? null,
+            assignedClients: u.assignedClients ?? undefined,
+            isBanned: !!u.isBanned, isApproved: !!u.isApproved,
+          },
+          create: {
+            id: u.id, uid: u.uid, email: u.email, role: u.role,
+            displayName: u.displayName ?? null, passwordHash: u.passwordHash ?? null,
+            assignedClients: u.assignedClients ?? undefined,
+            isBanned: !!u.isBanned, isApproved: !!u.isApproved,
+            createdAt: u.createdAt ? new Date(u.createdAt) : new Date(),
+          },
+        });
+        counts.users++;
+      } catch (e: any) { errors.push(`user ${u.email}: ${e.message}`); }
+    }
+
+    const clients: any[] = await sql`SELECT * FROM "Client"`;
+    counts.clients = 0;
+    for (const c of clients) {
+      try {
+        await prisma.client.upsert({
+          where: { uid: c.uid },
+          update: {
+            assignedEmployeeId: c.assignedEmployeeId ?? null, status: c.status,
+            masterResumeStorageUrl: c.masterResumeStorageUrl ?? null,
+            applicationData: c.applicationData ?? undefined,
+            onboardingSkipped: !!c.onboardingSkipped,
+          },
+          create: {
+            id: c.id, uid: c.uid, assignedEmployeeId: c.assignedEmployeeId ?? null,
+            status: c.status, masterResumeStorageUrl: c.masterResumeStorageUrl ?? null,
+            applicationData: c.applicationData ?? undefined,
+            onboardingSkipped: !!c.onboardingSkipped,
+            createdAt: c.createdAt ? new Date(c.createdAt) : new Date(),
+            updatedAt: c.updatedAt ? new Date(c.updatedAt) : new Date(),
+          },
+        });
+        counts.clients++;
+      } catch (e: any) { errors.push(`client ${c.uid}: ${e.message}`); }
+    }
+
+    try {
+      const jobs: any[] = await sql`SELECT * FROM "ClientJob"`;
+      counts.jobs = 0;
+      for (const j of jobs) {
+        try {
+          await prisma.clientJob.upsert({
+            where: { id: j.id },
+            update: {},
+            create: {
+              id: j.id, clientId: j.clientId, company: j.company, role: j.role,
+              status: j.status, appliedDate: j.appliedDate ?? null, jobUrl: j.jobUrl ?? null,
+              location: j.location ?? null, salary: j.salary ?? null,
+              tailoredResumeUrl: j.tailoredResumeUrl ?? null,
+              createdAt: j.createdAt ? new Date(j.createdAt) : new Date(),
+              updatedAt: j.updatedAt ? new Date(j.updatedAt) : new Date(),
+            },
+          });
+          counts.jobs++;
+        } catch (e: any) { errors.push(`job ${j.id}: ${e.message}`); }
+      }
+    } catch (e: any) { errors.push('ClientJob table: ' + e.message); }
+
+    try {
+      const rh: any[] = await sql`SELECT * FROM "ResumeHistory"`;
+      counts.resumeHistory = 0;
+      for (const r of rh) {
+        try {
+          await prisma.resumeHistory.upsert({
+            where: { id: r.id }, update: {},
+            create: {
+              id: r.id, userId: r.userId, resumeText: r.resumeText, company: r.company ?? null,
+              role: r.role ?? null, atsScore: r.atsScore ?? null, jobId: r.jobId ?? null,
+              createdAt: r.createdAt ? new Date(r.createdAt) : new Date(),
+            },
+          });
+          counts.resumeHistory++;
+        } catch (e: any) { errors.push(`resume ${r.id}: ${e.message}`); }
+      }
+    } catch (e: any) { errors.push('ResumeHistory table: ' + e.message); }
+
+    try {
+      const pre: any[] = await sql`SELECT * FROM "PreRegistration"`;
+      counts.preRegistration = 0;
+      for (const p of pre) {
+        try {
+          await prisma.preRegistration.upsert({
+            where: { email: p.email }, update: {},
+            create: {
+              id: p.id, email: p.email, displayName: p.displayName ?? null, role: p.role,
+              generatedPassword: p.generatedPassword, uid: p.uid ?? null,
+              createdAt: p.createdAt ? new Date(p.createdAt) : new Date(),
+            },
+          });
+          counts.preRegistration++;
+        } catch (e: any) { errors.push(`prereg ${p.email}: ${e.message}`); }
+      }
+    } catch (e: any) { errors.push('PreRegistration table: ' + e.message); }
+
+    return res.json({ ok: true, counts, errorCount: errors.length, errors: errors.slice(0, 20) });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message, counts, errors: errors.slice(0, 20) });
+  }
+});
+
 // Diagnostic: try every MySQL connection method and report which works.
 app.get("/api/debug/mysql", async (_req, res) => {
   const out: any = {};
