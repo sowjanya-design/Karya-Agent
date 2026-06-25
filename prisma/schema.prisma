@@ -1,11 +1,9 @@
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
-  engineType      = "wasm"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -16,7 +14,7 @@ model User {
   role            String
   displayName     String?
   passwordHash    String?
-  assignedClients String[]
+  assignedClients Json?
   isBanned        Boolean  @default(false)
   isApproved      Boolean  @default(false)
   createdAt       DateTime @default(now())
@@ -27,7 +25,7 @@ model Client {
   uid                     String   @unique
   assignedEmployeeId      String?
   status                  String   @default("incomplete")
-  masterResumeStorageUrl  String?
+  masterResumeStorageUrl  String?  @db.Text
   applicationData         Json?
   onboardingSkipped       Boolean  @default(false)
   createdAt               DateTime @default(now())
@@ -42,10 +40,10 @@ model ClientJob {
   role              String
   status            String
   appliedDate       String?
-  jobUrl            String?
+  jobUrl            String?  @db.Text
   location          String?
   salary            String?
-  tailoredResumeUrl String?
+  tailoredResumeUrl String?  @db.Text
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -55,7 +53,7 @@ model ClientJob {
 model ResumeHistory {
   id         String   @id @default(uuid())
   userId     String
-  resumeText String
+  resumeText String   @db.Text
   company    String?
   role       String?
   atsScore   Float?

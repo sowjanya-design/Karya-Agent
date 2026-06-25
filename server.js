@@ -24,54 +24,27 @@ var __dirname = path.dirname(__filename);
 var prisma = null;
 var dbReady = false;
 var dbAdapter = "none";
-async function neonWakeAttempt(timeoutMs) {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) return false;
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(dbUrl, { fetchOptions: { signal: ctrl.signal } });
-    await sql`SELECT 1`;
-    return true;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(t);
-  }
-}
 var warmingUp = false;
 async function warmupNeon() {
-  if (warmingUp) return;
-  warmingUp = true;
-  console.log("[db] starting Neon warmup (fresh HTTP wake attempts)...");
-  for (let i = 1; i <= 30; i++) {
-    const ok = await neonWakeAttempt(12e3);
-    if (ok) {
-      if (prisma) {
-        try {
-          await withDbTimeout(prisma.$queryRaw`SELECT 1`, 2e4);
-          console.log("[db] Prisma adapter primed \u2713");
-        } catch (pe) {
-          console.warn("[db] Prisma prime slow/failed, will keep trying:", pe.message);
-          dbReady = false;
-          if (i < 30) {
-            await new Promise((r) => setTimeout(r, 4e3));
-            continue;
-          }
-        }
-      }
-      dbReady = true;
-      warmingUp = false;
-      console.log(`[db] Neon warmed up \u2713 (attempt ${i})`);
-      return;
-    }
-    console.error(`[db] warmup attempt ${i}/30 did not complete (compute likely cold)`);
-    dbReady = false;
-    if (i < 30) await new Promise((r) => setTimeout(r, 4e3));
-  }
+  dbReady = true;
   warmingUp = false;
-  console.error("[db] warmup gave up \u2014 will retry on next keepalive (3 min)");
+}
+async function ensureAdmins() {
+  if (!prisma) return;
+  const admins = [
+    { uid: "admin_01", email: "karya.ai.admin@gmail.com", displayName: "Karya Admin", password: "AdminPassword123!" },
+    { uid: "admin_02", email: "karya.secret.admin@gmail.com", displayName: "Karya Admin 2", password: "AdminPassword123!" },
+    { uid: "admin_03", email: "avinashmurari3@gmail.com", displayName: "Karya Admin 3", password: "Avinash@001" }
+  ];
+  for (const a of admins) {
+    const passwordHash = await bcrypt.hash(a.password, 10);
+    await prisma.user.upsert({
+      where: { email: a.email },
+      update: { passwordHash, role: "admin", isApproved: true },
+      create: { uid: a.uid, email: a.email, displayName: a.displayName, role: "admin", isApproved: true, passwordHash }
+    });
+  }
+  console.log("[db] admin accounts ensured");
 }
 var JWT_SECRET = process.env.JWT_SECRET || "super_secret_jwt_key_here";
 var FIXED_EMAILS = [
@@ -505,43 +478,13 @@ if (!process.env.VERCEL) {
     const distPath = path.join(process.cwd(), "dist");
     try {
       const dbUrl = process.env.DATABASE_URL;
-      console.log("[db] DATABASE_URL:", dbUrl ? dbUrl.slice(0, 50) + "..." : "NOT FOUND");
+      console.log("[db] DATABASE_URL:", dbUrl ? dbUrl.slice(0, 30) + "..." : "NOT FOUND");
       if (!dbUrl) throw new Error("DATABASE_URL not set");
-      let adapterConfigured = false;
-      const adapterMod = await import("@prisma/adapter-neon");
-      console.log("[db] adapter-neon exports:", Object.keys(adapterMod).join(","));
-      if (adapterMod.PrismaNeonHTTP) {
-        try {
-          const adapter = new adapterMod.PrismaNeonHTTP(dbUrl);
-          prisma = new PrismaClient({ adapter });
-          adapterConfigured = true;
-          dbAdapter = "PrismaNeonHTTP";
-          console.log("[db] PrismaNeonHTTP adapter configured");
-        } catch (he) {
-          console.error("[db] PrismaNeonHTTP error:", he.message);
-          dbInitError = "neon-http: " + he.message;
-        }
-      } else {
-        dbInitError = "PrismaNeonHTTP export missing; exports=" + Object.keys(adapterMod).join(",");
-        console.error("[db] " + dbInitError);
-      }
-      if (!adapterConfigured) {
-        try {
-          const { Pool, neonConfig } = await import("@neondatabase/serverless");
-          const wsModule = await import("ws");
-          neonConfig.webSocketConstructor = wsModule.default ?? wsModule;
-          const pool = new Pool({ connectionString: dbUrl });
-          const adapter = new adapterMod.PrismaNeon(pool);
-          prisma = new PrismaClient({ adapter });
-          adapterConfigured = true;
-          dbAdapter = "PrismaNeon(pool)";
-          console.log("[db] PrismaNeon(pool) fallback configured");
-        } catch (fe) {
-          console.error("[db] fallback adapter error:", fe.message);
-          dbInitError += " | fallback: " + fe.message;
-        }
-      }
-      warmupNeon();
+      prisma = new PrismaClient();
+      dbAdapter = "mysql";
+      dbReady = true;
+      console.log("[db] MySQL PrismaClient configured");
+      ensureAdmins().catch((e) => console.error("[db] ensureAdmins failed:", e.message));
     } catch (e) {
       dbInitError = e.message;
       console.error("[db] init failed, server still starting:", e.message);
@@ -553,15 +496,13 @@ if (!process.env.VERCEL) {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`\u2705 Server running on http://localhost:${PORT}`);
       setInterval(async () => {
-        if (!prisma || warmingUp) return;
+        if (!prisma) return;
         try {
-          await withDbTimeout(prisma.$queryRaw`SELECT 1`, 1e4);
+          await prisma.$queryRaw`SELECT 1`;
           dbReady = true;
         } catch {
-          dbReady = false;
-          warmupNeon();
         }
-      }, 2 * 60 * 1e3);
+      }, 4 * 60 * 1e3);
     });
   })();
 }
