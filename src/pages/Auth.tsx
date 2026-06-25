@@ -121,29 +121,46 @@ export default function Auth() {
         }
         setIsSignUp(false);
       } else {
-        const doLogin = async () => fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: cleanEmail, password }),
-        });
+        const doLogin = async () => {
+          const ctrl = new AbortController();
+          const to = setTimeout(() => ctrl.abort(), 20000);
+          try {
+            return await fetch('/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: cleanEmail, password }),
+              signal: ctrl.signal,
+            });
+          } finally { clearTimeout(to); }
+        };
 
-        let res = await doLogin();
-        // Parse safely — server may return HTML on Hostinger timeout
-        let data: any;
-        const text = await res.text();
-        try { data = JSON.parse(text); } catch { data = {}; }
-
-        // If timed out (HTML response or explicit timeout error), retry once
-        const isTimeout = !res.ok && (!data.error || text.includes('Request Timeout') || text.includes('timed out'));
-        if (isTimeout) {
-          setLoginStatus('Server busy, retrying in 4 seconds...');
-          await new Promise(r => setTimeout(r, 4000));
-          res = await doLogin();
-          const t2 = await res.text();
-          try { data = JSON.parse(t2); } catch { data = {}; }
+        // Retry automatically while the server reports it's waking the DB.
+        // Neon free-tier cold start can take a minute; the user just waits.
+        let data: any = {};
+        let res: Response | null = null;
+        const MAX = 10;
+        for (let attempt = 1; attempt <= MAX; attempt++) {
+          try {
+            res = await doLogin();
+          } catch {
+            // network/abort timeout — treat as warming, retry
+            res = null;
+          }
+          if (res) {
+            const text = await res.text();
+            try { data = JSON.parse(text); } catch { data = {}; }
+            // Success or a real auth error (400/401/403) → stop retrying
+            if (res.ok) break;
+            if (res.status === 400 || res.status === 401 || res.status === 403) break;
+            // Anything else (503 warming, HTML timeout, 5xx) → retry
+          }
+          if (attempt < MAX) {
+            setLoginStatus(`Waking the server… retrying (${attempt}/${MAX})`);
+            await new Promise(r => setTimeout(r, 4000));
+          }
         }
 
-        if (!res.ok) throw new Error(data?.error || (isTimeout ? 'Server timed out, please try again' : 'Login failed'));
+        if (!res || !res.ok) throw new Error(data?.error || 'Server is taking too long to wake. Please try again in a moment.');
 
         if (data.user.role !== activeTab) {
           toast.error(`Access Denied: This account is registered as ${data.user.role.toUpperCase()}. Please use the correct tab.`);

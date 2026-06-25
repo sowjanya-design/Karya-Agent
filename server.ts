@@ -31,27 +31,45 @@ let prisma: PrismaClient = null!;
 let dbReady = false;
 let dbAdapter = 'none';
 
+// Wake a suspended Neon compute with a raw HTTP query that we can hard-cancel.
+// A single hanging query never wakes it; firing FRESH short requests does.
+// AbortController ensures abandoned attempts are actually cancelled (no leaks).
+async function neonWakeAttempt(timeoutMs: number): Promise<boolean> {
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) return false;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const { neon } = await import('@neondatabase/serverless') as any;
+    const sql = neon(dbUrl, { fetchOptions: { signal: ctrl.signal } });
+    await sql`SELECT 1`;
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 let warmingUp = false;
 async function warmupNeon() {
-  if (warmingUp || !prisma) return;
+  if (warmingUp) return;
   warmingUp = true;
-  console.log('[db] starting Neon warmup via Prisma (HTTP adapter)...');
-  // Use prisma.$queryRaw directly — this exercises the SAME transport that
-  // real login queries use (neon HTTP over port 443). The previous pg.Client
-  // approach tested TCP port 5432, which Hostinger blocks, so dbReady never
-  // flipped true even though Prisma queries over HTTP worked fine.
-  for (let i = 1; i <= 12; i++) {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
+  console.log('[db] starting Neon warmup (fresh HTTP wake attempts)...');
+  // Up to ~30 attempts over a few minutes. Each attempt is a NEW request with
+  // a short timeout, so a suspended compute keeps getting fresh wake signals
+  // instead of one request hanging forever.
+  for (let i = 1; i <= 30; i++) {
+    const ok = await neonWakeAttempt(12000);
+    if (ok) {
       dbReady = true;
       warmingUp = false;
       console.log(`[db] Neon warmed up ✓ (attempt ${i})`);
       return;
-    } catch (e: any) {
-      console.error(`[db] warmup attempt ${i}/12: ${e.message}`);
-      dbReady = false;
-      if (i < 12) await new Promise(r => setTimeout(r, 6000));
     }
+    console.error(`[db] warmup attempt ${i}/30 did not complete (compute likely cold)`);
+    dbReady = false;
+    if (i < 30) await new Promise(r => setTimeout(r, 4000));
   }
   warmingUp = false;
   console.error('[db] warmup gave up — will retry on next keepalive (3 min)');
@@ -183,43 +201,58 @@ app.post("/api/auth/register", async (req, res) => {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// Race a DB promise against a timeout so a cold Neon query can't hang the
+// request for 90s. On timeout we kick off warmup and return a fast 503 the
+// frontend retries — far better UX than a hung connection.
+class DbWarmingError extends Error { constructor() { super('db-warming'); } }
+function withDbTimeout<T>(p: Promise<T>, ms = 9000): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, rej) => setTimeout(() => rej(new DbWarmingError()), ms)),
+  ]);
+}
+
 app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      if (!prisma) return res.status(503).json({ error: "Server starting up, please retry in a moment" });
-      const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-      if (!user) return res.status(400).json({ error: "Invalid credentials" });
-      const validPassword = await bcrypt.compare(password, (user as any).passwordHash);
-      if (!validPassword) return res.status(400).json({ error: "Invalid credentials" });
-      const token = jwt.sign({ uid: user.uid, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-      let clientProfile = null;
-      if ((user as any).role === 'client') {
-        clientProfile = await prisma.client.findUnique({ where: { uid: (user as any).uid } });
-      }
-      return res.json({ token, user, clientProfile });
-    } catch (error: any) {
-      const isTimeout = error.message?.includes('timeout') || error.code === '57014';
-      if (attempt === 1 && isTimeout) {
-        console.log('[login] DB cold-start timeout, retrying in 3s...');
-        await sleep(3000); // give Neon time to wake up
-        continue;
-      }
-      return res.status(500).json({ error: isTimeout ? 'Database is starting up, please try again' : error.message });
+  try {
+    if (!prisma) { warmupNeon(); return res.status(503).json({ error: "Server waking up, please retry", warming: true }); }
+    const user = await withDbTimeout(prisma.user.findUnique({ where: { email: email.toLowerCase() } }));
+    if (!user) return res.status(400).json({ error: "Invalid credentials" });
+    const validPassword = await bcrypt.compare(password, (user as any).passwordHash);
+    if (!validPassword) return res.status(400).json({ error: "Invalid credentials" });
+    const token = jwt.sign({ uid: user.uid, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+    let clientProfile = null;
+    if ((user as any).role === 'client') {
+      clientProfile = await withDbTimeout(prisma.client.findUnique({ where: { uid: (user as any).uid } }));
     }
+    dbReady = true;
+    return res.json({ token, user, clientProfile });
+  } catch (error: any) {
+    const warming = error instanceof DbWarmingError || error.message?.includes('timeout') || error.code === '57014';
+    if (warming) {
+      warmupNeon(); // kick a background wake so subsequent retries succeed
+      return res.status(503).json({ error: "Server waking up, please retry in a few seconds", warming: true });
+    }
+    return res.status(500).json({ error: error.message });
   }
 });
 
 app.get("/api/auth/me", authenticateToken, async (req: any, res: any) => {
   try {
-    const user = await prisma.user.findUnique({ where: { uid: req.user.uid } });
+    const user = await withDbTimeout(prisma.user.findUnique({ where: { uid: req.user.uid } }));
     if (!user) return res.status(404).json({ error: "User not found" });
     let clientProfile = null;
     if (user.role === 'client') {
-      clientProfile = await prisma.client.findUnique({ where: { uid: user.uid } });
+      clientProfile = await withDbTimeout(prisma.client.findUnique({ where: { uid: user.uid } }));
     }
+    dbReady = true;
     res.json({ user, clientProfile });
   } catch (error: any) {
+    const warming = error instanceof DbWarmingError || error.message?.includes('timeout') || error.code === '57014';
+    if (warming) {
+      warmupNeon();
+      return res.status(503).json({ error: "Server waking up, please retry", warming: true });
+    }
     res.status(500).json({ error: error.message });
   }
 });

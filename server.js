@@ -24,23 +24,38 @@ var __dirname = path.dirname(__filename);
 var prisma = null;
 var dbReady = false;
 var dbAdapter = "none";
+async function neonWakeAttempt(timeoutMs) {
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) return false;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const { neon } = await import("@neondatabase/serverless");
+    const sql = neon(dbUrl, { fetchOptions: { signal: ctrl.signal } });
+    await sql`SELECT 1`;
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(t);
+  }
+}
 var warmingUp = false;
 async function warmupNeon() {
-  if (warmingUp || !prisma) return;
+  if (warmingUp) return;
   warmingUp = true;
-  console.log("[db] starting Neon warmup via Prisma (HTTP adapter)...");
-  for (let i = 1; i <= 12; i++) {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
+  console.log("[db] starting Neon warmup (fresh HTTP wake attempts)...");
+  for (let i = 1; i <= 30; i++) {
+    const ok = await neonWakeAttempt(12e3);
+    if (ok) {
       dbReady = true;
       warmingUp = false;
       console.log(`[db] Neon warmed up \u2713 (attempt ${i})`);
       return;
-    } catch (e) {
-      console.error(`[db] warmup attempt ${i}/12: ${e.message}`);
-      dbReady = false;
-      if (i < 12) await new Promise((r) => setTimeout(r, 6e3));
     }
+    console.error(`[db] warmup attempt ${i}/30 did not complete (compute likely cold)`);
+    dbReady = false;
+    if (i < 30) await new Promise((r) => setTimeout(r, 4e3));
   }
   warmingUp = false;
   console.error("[db] warmup gave up \u2014 will retry on next keepalive (3 min)");
@@ -143,43 +158,60 @@ app.post("/api/auth/register", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+var DbWarmingError = class extends Error {
+  constructor() {
+    super("db-warming");
+  }
+};
+function withDbTimeout(p, ms = 9e3) {
+  return Promise.race([
+    p,
+    new Promise((_, rej) => setTimeout(() => rej(new DbWarmingError()), ms))
+  ]);
+}
 app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      if (!prisma) return res.status(503).json({ error: "Server starting up, please retry in a moment" });
-      const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-      if (!user) return res.status(400).json({ error: "Invalid credentials" });
-      const validPassword = await bcrypt.compare(password, user.passwordHash);
-      if (!validPassword) return res.status(400).json({ error: "Invalid credentials" });
-      const token = jwt.sign({ uid: user.uid, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
-      let clientProfile = null;
-      if (user.role === "client") {
-        clientProfile = await prisma.client.findUnique({ where: { uid: user.uid } });
-      }
-      return res.json({ token, user, clientProfile });
-    } catch (error) {
-      const isTimeout = error.message?.includes("timeout") || error.code === "57014";
-      if (attempt === 1 && isTimeout) {
-        console.log("[login] DB cold-start timeout, retrying in 3s...");
-        await sleep(3e3);
-        continue;
-      }
-      return res.status(500).json({ error: isTimeout ? "Database is starting up, please try again" : error.message });
+  try {
+    if (!prisma) {
+      warmupNeon();
+      return res.status(503).json({ error: "Server waking up, please retry", warming: true });
     }
+    const user = await withDbTimeout(prisma.user.findUnique({ where: { email: email.toLowerCase() } }));
+    if (!user) return res.status(400).json({ error: "Invalid credentials" });
+    const validPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!validPassword) return res.status(400).json({ error: "Invalid credentials" });
+    const token = jwt.sign({ uid: user.uid, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
+    let clientProfile = null;
+    if (user.role === "client") {
+      clientProfile = await withDbTimeout(prisma.client.findUnique({ where: { uid: user.uid } }));
+    }
+    dbReady = true;
+    return res.json({ token, user, clientProfile });
+  } catch (error) {
+    const warming = error instanceof DbWarmingError || error.message?.includes("timeout") || error.code === "57014";
+    if (warming) {
+      warmupNeon();
+      return res.status(503).json({ error: "Server waking up, please retry in a few seconds", warming: true });
+    }
+    return res.status(500).json({ error: error.message });
   }
 });
 app.get("/api/auth/me", authenticateToken, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({ where: { uid: req.user.uid } });
+    const user = await withDbTimeout(prisma.user.findUnique({ where: { uid: req.user.uid } }));
     if (!user) return res.status(404).json({ error: "User not found" });
     let clientProfile = null;
     if (user.role === "client") {
-      clientProfile = await prisma.client.findUnique({ where: { uid: user.uid } });
+      clientProfile = await withDbTimeout(prisma.client.findUnique({ where: { uid: user.uid } }));
     }
+    dbReady = true;
     res.json({ user, clientProfile });
   } catch (error) {
+    const warming = error instanceof DbWarmingError || error.message?.includes("timeout") || error.code === "57014";
+    if (warming) {
+      warmupNeon();
+      return res.status(503).json({ error: "Server waking up, please retry", warming: true });
+    }
     res.status(500).json({ error: error.message });
   }
 });

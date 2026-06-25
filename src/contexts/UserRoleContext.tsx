@@ -72,13 +72,45 @@ export function UserRoleProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    try {
-      const res = await fetch('/api/auth/me', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+    // Fetch /api/auth/me with a timeout + retries so a cold/slow server can
+    // never trap the UI on "Checking account..." forever.
+    const fetchMe = async (timeoutMs: number) => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        return await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(t);
+      }
+    };
 
-      if (!res.ok) {
-        throw new Error('Failed to fetch profile');
+    try {
+      let res: Response | null = null;
+      // Up to 3 attempts; server may be waking from cold start.
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          res = await fetchMe(15000);
+          if (res.status === 401 || res.status === 403) break; // bad token, stop
+          if (res.ok) break;
+        } catch {
+          // timeout/network — fall through to retry
+        }
+        if (attempt < 3) await new Promise(r => setTimeout(r, 2000));
+      }
+
+      if (!res || !res.ok) {
+        // Could not verify (server cold or token invalid). Don't hang the UI.
+        if (res && (res.status === 401 || res.status === 403)) {
+          localStorage.removeItem('jwt_token');
+        }
+        setUser(null);
+        setUserProfile(null);
+        setClientProfile(null);
+        setLoading(false);
+        return;
       }
 
       const data = await res.json();
