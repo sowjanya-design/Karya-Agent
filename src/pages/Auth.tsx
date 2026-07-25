@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowRight, Mail, Lock, ShieldAlert, Briefcase, Building2, UserCheck, Eye, EyeOff, Clock, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -21,25 +21,6 @@ export default function Auth() {
   
   const navigate = useNavigate();
   const { user, userProfile, clientProfile, loading, login, logout } = useUserRole();
-
-  const [dbReady, setDbReady] = useState(false);
-
-  // Poll /api/ping until DB is warm, then enable login
-  useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      while (!cancelled) {
-        try {
-          const r = await fetch('/api/ping');
-          const d = await r.json();
-          if (d.dbReady) { setDbReady(true); return; }
-        } catch {}
-        await new Promise(res => setTimeout(res, 3000));
-      }
-    };
-    poll();
-    return () => { cancelled = true; };
-  }, []);
 
   const loggedInUser = user;
   const loggedInRole = userProfile?.role;
@@ -96,13 +77,6 @@ export default function Auth() {
     setLoginStatus('Connecting...');
     const cleanEmail = email.toLowerCase().trim();
 
-    // Progressive status messages so user knows server is waking up
-    const t1 = setTimeout(() => setLoginStatus('Server is starting up, please wait...'), 4000);
-    const t2 = setTimeout(() => setLoginStatus('Almost there, waking up the database...'), 10000);
-    const t3 = setTimeout(() => setLoginStatus('This is taking a bit longer than usual... still trying'), 18000);
-
-    const clearTimers = () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-
     try {
       if (isSignUp) {
         const res = await fetch('/api/auth/register', {
@@ -121,46 +95,13 @@ export default function Auth() {
         }
         setIsSignUp(false);
       } else {
-        const doLogin = async () => {
-          const ctrl = new AbortController();
-          const to = setTimeout(() => ctrl.abort(), 20000);
-          try {
-            return await fetch('/api/auth/login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: cleanEmail, password }),
-              signal: ctrl.signal,
-            });
-          } finally { clearTimeout(to); }
-        };
-
-        // Retry automatically while the server reports it's waking the DB.
-        // Neon free-tier cold start can take a minute; the user just waits.
-        let data: any = {};
-        let res: Response | null = null;
-        const MAX = 10;
-        for (let attempt = 1; attempt <= MAX; attempt++) {
-          try {
-            res = await doLogin();
-          } catch {
-            // network/abort timeout — treat as warming, retry
-            res = null;
-          }
-          if (res) {
-            const text = await res.text();
-            try { data = JSON.parse(text); } catch { data = {}; }
-            // Success or a real auth error (400/401/403) → stop retrying
-            if (res.ok) break;
-            if (res.status === 400 || res.status === 401 || res.status === 403) break;
-            // Anything else (503 warming, HTML timeout, 5xx) → retry
-          }
-          if (attempt < MAX) {
-            setLoginStatus(`Waking the server… retrying (${attempt}/${MAX})`);
-            await new Promise(r => setTimeout(r, 4000));
-          }
-        }
-
-        if (!res || !res.ok) throw new Error(data?.error || 'Server is taking too long to wake. Please try again in a moment.');
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: cleanEmail, password }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || 'Login failed. Please try again.');
 
         if (data.user.role !== activeTab) {
           toast.error(`Access Denied: This account is registered as ${data.user.role.toUpperCase()}. Please use the correct tab.`);
@@ -179,7 +120,6 @@ export default function Auth() {
     } catch (error: any) {
       toast.error(error.message || 'Authentication failed. Please verify your credentials.');
     } finally {
-      clearTimers();
       setLoginStatus('');
       setIsLoading(false);
     }
@@ -538,12 +478,6 @@ export default function Auth() {
                     </>
                   )}
                 </button>
-
-                {!isSignUp && !dbReady && (
-                  <p className="text-[10px] text-center text-brand-muted/70 tracking-wide">
-                    Waking the server — your first login may take a few seconds.
-                  </p>
-                )}
 
                 {activeTab === 'client' && (
                   <button

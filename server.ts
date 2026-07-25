@@ -26,66 +26,12 @@ dotenv.config({ path: path.join(process.cwd(), '..', '.env') });
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// wasm engine requires a driver adapter — assigned in the startup IIFE before app.listen()
-let prisma: PrismaClient = null!;
-let dbReady = false;
-let dbAdapter = 'none';
-
-// Wake Neon with fresh short HTTP pulses (AbortController-bounded) so a
-// suspended free-tier compute keeps getting wake signals instead of one
-// request hanging forever, then prime the Prisma adapter.
-// (Re)create the Prisma client with a fresh Neon HTTP adapter. A freshly
-// built client always queries fine; a long-lived one can start hanging every
-// query after idle, so we rebuild on demand to self-heal.
-let reinitializing = false;
-async function reinitPrisma() {
-  if (reinitializing) return;
-  reinitializing = true;
-  try {
-    const adapterMod = await import('@prisma/adapter-neon') as any;
-    const adapter = new adapterMod.PrismaNeonHTTP(process.env.DATABASE_URL);
-    const fresh = new PrismaClient({ adapter } as any);
-    prisma = fresh;
-    dbAdapter = 'neon-http';
-    console.log('[db] Prisma client (re)initialized');
-  } catch (e: any) {
-    dbInitError = e.message;
-    console.error('[db] reinitPrisma failed:', e.message);
-  } finally {
-    reinitializing = false;
-  }
-}
-
-let warmingUp = false;
-async function warmupNeon() {
-  if (warmingUp) return;
-  warmingUp = true;
-  const dbUrl = process.env.DATABASE_URL;
-  for (let i = 1; i <= 30; i++) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 12000);
-    try {
-      const { neon } = await import('@neondatabase/serverless') as any;
-      const sql = neon(dbUrl, { fetchOptions: { signal: ctrl.signal } });
-      await sql`SELECT 1`;
-      clearTimeout(t);
-      if (prisma) { try { await withDbTimeout(prisma.$queryRaw`SELECT 1`, 12000); } catch { await reinitPrisma(); } }
-      dbReady = true;
-      warmingUp = false;
-      console.log(`[db] Neon warmed up ✓ (attempt ${i})`);
-      return;
-    } catch {
-      clearTimeout(t);
-      dbReady = false;
-      if (i < 30) await new Promise(r => setTimeout(r, 4000));
-    }
-  }
-  warmingUp = false;
-}
+// Plain Prisma client — Postgres runs locally on this VPS (no cold starts,
+// no serverless adapter needed).
+const prisma = new PrismaClient();
 
 // Idempotently create/refresh the admin accounts from the live server.
 async function ensureAdmins() {
-  if (!prisma) return;
   const admins = [
     { uid: 'admin_01', email: 'karya.ai.admin@gmail.com', displayName: 'Karya Admin', password: 'AdminPassword123!' },
     { uid: 'admin_02', email: 'karya.secret.admin@gmail.com', displayName: 'Karya Admin 2', password: 'AdminPassword123!' },
@@ -161,331 +107,13 @@ app.use('/api', (_req, res, next) => {
 // ALL API ROUTES
 // ============================================================
 
-// Debug: shows exactly what happened during DB init
-let dbInitError = '';
-app.get("/api/debug/db", async (_req, res) => {
-  const checks: any = { build: 'neon-v5-noundici', prismaNull: prisma === null, dbReady, dbInitError, dbAdapter };
-  // Live query test over the configured adapter (timed so it never hangs)
-  if (prisma) {
-    try {
-      await withDbTimeout(prisma.$queryRaw`SELECT 1`, 8000);
-      checks.liveQuery = 'ok';
-    } catch (e: any) {
-      checks.liveQuery = 'FAIL: ' + (e.message || e);
-    }
-  }
-  res.json(checks);
-});
-
-// One-time data migration: copy all rows from the old Neon (Postgres) DB
-// into the current MySQL DB. Runs in the BACKGROUND (Neon free-tier cold
-// start + proxy timeouts make a synchronous request impossible). Wakes Neon
-// with short retry pulses first, then reads over HTTPS and upserts to MySQL.
-let migrationState: any = { phase: 'idle', counts: {}, errors: [], startedAt: null, finishedAt: null };
-
-async function wakeNeon(neon: any, neonUrl: string): Promise<boolean> {
-  for (let i = 1; i <= 40; i++) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 10000);
-    try {
-      const sql = neon(neonUrl, { fetchOptions: { signal: ctrl.signal } });
-      await sql`SELECT 1`;
-      clearTimeout(t);
-      migrationState.phase = 'neon-awake';
-      return true;
-    } catch {
-      clearTimeout(t);
-      migrationState.phase = `waking-neon (${i}/40)`;
-      await new Promise(r => setTimeout(r, 4000));
-    }
-  }
-  return false;
-}
-
-async function runNeonMigration(neonUrl: string) {
-  const counts: any = {};
-  const errors: any[] = [];
-  migrationState = { phase: 'starting', counts, errors, startedAt: new Date().toISOString(), finishedAt: null };
-  try {
-    const { neon } = await import('@neondatabase/serverless') as any;
-    migrationState.phase = 'waking-neon';
-    const awake = await wakeNeon(neon, neonUrl);
-    if (!awake) { migrationState.phase = 'FAILED: could not wake Neon'; migrationState.finishedAt = new Date().toISOString(); return; }
-    const sql = neon(neonUrl);
-
-    migrationState.phase = 'copying Users';
-    // Order matters for foreign keys: Client before ClientJob.
-    const users: any[] = await sql`SELECT * FROM "User"`;
-    counts.users = 0;
-    for (const u of users) {
-      try {
-        await prisma.user.upsert({
-          where: { email: u.email },
-          update: {
-            uid: u.uid, role: u.role, displayName: u.displayName ?? null,
-            passwordHash: u.passwordHash ?? null,
-            assignedClients: u.assignedClients ?? undefined,
-            isBanned: !!u.isBanned, isApproved: !!u.isApproved,
-          },
-          create: {
-            id: u.id, uid: u.uid, email: u.email, role: u.role,
-            displayName: u.displayName ?? null, passwordHash: u.passwordHash ?? null,
-            assignedClients: u.assignedClients ?? undefined,
-            isBanned: !!u.isBanned, isApproved: !!u.isApproved,
-            createdAt: u.createdAt ? new Date(u.createdAt) : new Date(),
-          },
-        });
-        counts.users++;
-      } catch (e: any) { errors.push(`user ${u.email}: ${e.message}`); }
-    }
-
-    migrationState.phase = 'copying Clients';
-    const clients: any[] = await sql`SELECT * FROM "Client"`;
-    counts.clients = 0;
-    for (const c of clients) {
-      try {
-        await prisma.client.upsert({
-          where: { uid: c.uid },
-          update: {
-            assignedEmployeeId: c.assignedEmployeeId ?? null, status: c.status,
-            masterResumeStorageUrl: c.masterResumeStorageUrl ?? null,
-            applicationData: c.applicationData ?? undefined,
-            onboardingSkipped: !!c.onboardingSkipped,
-          },
-          create: {
-            id: c.id, uid: c.uid, assignedEmployeeId: c.assignedEmployeeId ?? null,
-            status: c.status, masterResumeStorageUrl: c.masterResumeStorageUrl ?? null,
-            applicationData: c.applicationData ?? undefined,
-            onboardingSkipped: !!c.onboardingSkipped,
-            createdAt: c.createdAt ? new Date(c.createdAt) : new Date(),
-            updatedAt: c.updatedAt ? new Date(c.updatedAt) : new Date(),
-          },
-        });
-        counts.clients++;
-      } catch (e: any) { errors.push(`client ${c.uid}: ${e.message}`); }
-    }
-
-    try {
-      const jobs: any[] = await sql`SELECT * FROM "ClientJob"`;
-      counts.jobs = 0;
-      for (const j of jobs) {
-        try {
-          await prisma.clientJob.upsert({
-            where: { id: j.id },
-            update: {},
-            create: {
-              id: j.id, clientId: j.clientId, company: j.company, role: j.role,
-              status: j.status, appliedDate: j.appliedDate ?? null, jobUrl: j.jobUrl ?? null,
-              location: j.location ?? null, salary: j.salary ?? null,
-              tailoredResumeUrl: j.tailoredResumeUrl ?? null,
-              createdAt: j.createdAt ? new Date(j.createdAt) : new Date(),
-              updatedAt: j.updatedAt ? new Date(j.updatedAt) : new Date(),
-            },
-          });
-          counts.jobs++;
-        } catch (e: any) { errors.push(`job ${j.id}: ${e.message}`); }
-      }
-    } catch (e: any) { errors.push('ClientJob table: ' + e.message); }
-
-    try {
-      const rh: any[] = await sql`SELECT * FROM "ResumeHistory"`;
-      counts.resumeHistory = 0;
-      for (const r of rh) {
-        try {
-          await prisma.resumeHistory.upsert({
-            where: { id: r.id }, update: {},
-            create: {
-              id: r.id, userId: r.userId, resumeText: r.resumeText, company: r.company ?? null,
-              role: r.role ?? null, atsScore: r.atsScore ?? null, jobId: r.jobId ?? null,
-              createdAt: r.createdAt ? new Date(r.createdAt) : new Date(),
-            },
-          });
-          counts.resumeHistory++;
-        } catch (e: any) { errors.push(`resume ${r.id}: ${e.message}`); }
-      }
-    } catch (e: any) { errors.push('ResumeHistory table: ' + e.message); }
-
-    try {
-      const pre: any[] = await sql`SELECT * FROM "PreRegistration"`;
-      counts.preRegistration = 0;
-      for (const p of pre) {
-        try {
-          await prisma.preRegistration.upsert({
-            where: { email: p.email }, update: {},
-            create: {
-              id: p.id, email: p.email, displayName: p.displayName ?? null, role: p.role,
-              generatedPassword: p.generatedPassword, uid: p.uid ?? null,
-              createdAt: p.createdAt ? new Date(p.createdAt) : new Date(),
-            },
-          });
-          counts.preRegistration++;
-        } catch (e: any) { errors.push(`prereg ${p.email}: ${e.message}`); }
-      }
-    } catch (e: any) { errors.push('PreRegistration table: ' + e.message); }
-
-    migrationState.phase = 'done';
-    migrationState.finishedAt = new Date().toISOString();
-  } catch (e: any) {
-    migrationState.phase = 'FAILED: ' + e.message;
-    migrationState.finishedAt = new Date().toISOString();
-  }
-}
-
-app.post("/api/admin/migrate-from-neon", async (req, res) => {
-  const { secret, neonUrl } = req.body || {};
-  if (!secret || secret !== process.env.SETUP_SECRET) return res.status(403).json({ error: "bad secret" });
-  if (!neonUrl || !/^postgres/.test(neonUrl)) return res.status(400).json({ error: "provide neonUrl (postgresql://...)" });
-  if (!prisma) return res.status(503).json({ error: "db not ready" });
-  if (migrationState.phase !== 'idle' && migrationState.phase !== 'done' && !String(migrationState.phase).startsWith('FAILED')) {
-    return res.json({ started: false, alreadyRunning: true, phase: migrationState.phase, counts: migrationState.counts });
-  }
-  runNeonMigration(neonUrl); // fire-and-forget; poll status below
-  res.json({ started: true, statusUrl: "/api/admin/migrate-status" });
-});
-
-app.get("/api/admin/migrate-status", (_req, res) => {
-  res.json({
-    phase: migrationState.phase,
-    counts: migrationState.counts,
-    errorCount: (migrationState.errors || []).length,
-    errors: (migrationState.errors || []).slice(0, 20),
-    startedAt: migrationState.startedAt,
-    finishedAt: migrationState.finishedAt,
-  });
-});
-
-// Batch import: client (my sandbox) reads Neon and POSTs rows here in small
-// batches; we upsert them into MySQL synchronously and return a count. Robust
-// (no background state, no proxy timeout, no Neon dependence on this side).
-app.post("/api/admin/import-batch", async (req, res) => {
-  const { secret, table, rows } = req.body || {};
-  if (!secret || secret !== process.env.SETUP_SECRET) return res.status(403).json({ error: "bad secret" });
-  if (!prisma) return res.status(503).json({ error: "db not ready" });
-  if (!Array.isArray(rows)) return res.status(400).json({ error: "rows must be an array" });
-
-  // Use RAW single-statement INSERTs (autocommit). Prisma's upsert wraps an
-  // interactive transaction that hangs over the mariadb socket adapter, but
-  // raw INSERTs work (same path as a phpMyAdmin import).
-  const schema: Record<string, { cols: string[]; conflict: string; json?: string[]; bool?: string[]; date?: string[] }> = {
-    User: { cols: ['id','uid','email','role','displayName','passwordHash','assignedClients','isBanned','isApproved','createdAt'], conflict: 'email', json: ['assignedClients'], bool: ['isBanned','isApproved'], date: ['createdAt'] },
-    Client: { cols: ['id','uid','assignedEmployeeId','status','masterResumeStorageUrl','applicationData','onboardingSkipped','createdAt','updatedAt'], conflict: 'uid', json: ['applicationData'], bool: ['onboardingSkipped'], date: ['createdAt','updatedAt'] },
-    ClientJob: { cols: ['id','clientId','company','role','status','appliedDate','jobUrl','location','salary','tailoredResumeUrl','createdAt','updatedAt'], conflict: 'id', date: ['createdAt','updatedAt'] },
-    ResumeHistory: { cols: ['id','userId','resumeText','company','role','atsScore','jobId','createdAt'], conflict: 'id', date: ['createdAt'] },
-    PreRegistration: { cols: ['id','email','displayName','role','generatedPassword','uid','createdAt'], conflict: 'email', date: ['createdAt'] },
-  };
-  const def = schema[table];
-  if (!def) return res.status(400).json({ error: "unknown table " + table });
-
-  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  const lit = (col: string, val: any): string => {
-    if (val === null || val === undefined) return 'NULL';
-    if (def.bool?.includes(col)) return val ? '1' : '0';
-    if (def.json?.includes(col)) return `'${esc(JSON.stringify(val))}'`;
-    if (def.date?.includes(col)) { const d = new Date(val); return isNaN(+d) ? 'NULL' : `'${d.toISOString().slice(0,23).replace('T',' ')}'`; }
-    return `'${esc(String(val))}'`;
-  };
-
-  let ok = 0;
-  const errors: string[] = [];
-  try {
-    for (const r of rows) {
-      try {
-        const colSql = def.cols.map(c => '`'+c+'`').join(',');
-        const valSql = def.cols.map(c => lit(c, r[c])).join(',');
-        const upd = def.cols.filter(c => c !== def.conflict && c !== 'id').map(c => '`'+c+'`=VALUES(`'+c+'`)').join(',');
-        const sql = `INSERT INTO \`${table}\` (${colSql}) VALUES (${valSql}) ON DUPLICATE KEY UPDATE ${upd}`;
-        await prisma.$executeRawUnsafe(sql);
-        ok++;
-      } catch (e: any) { errors.push(`${r.id || r.email}: ${e.message}`); }
-    }
-    res.json({ ok, errorCount: errors.length, errors: errors.slice(0, 10) });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message, ok, errors: errors.slice(0, 10) });
-  }
-});
-
-// Diagnostic: try every MySQL connection method and report which works.
-app.get("/api/debug/mysql", async (_req, res) => {
-  const out: any = {};
-  let mariadb: any;
-  try { mariadb = (await import('mariadb')) as any; mariadb = mariadb.default ?? mariadb; }
-  catch (e: any) { return res.json({ importError: e.message }); }
-
-  const u = new URL(process.env.DATABASE_URL || 'mysql://');
-  const base = {
-    user: decodeURIComponent(u.username),
-    password: decodeURIComponent(u.password),
-    database: u.pathname.replace(/^\//, ''),
-    connectTimeout: 6000,
-  };
-
-  // Which common sockets exist on disk?
-  const fs = await import('fs');
-  out.sockets = {};
-  for (const p of ['/var/run/mysqld/mysqld.sock', '/run/mysqld/mysqld.sock', '/tmp/mysql.sock', '/var/lib/mysql/mysql.sock', '/var/run/mysqld/mysqld10.sock']) {
-    try { out.sockets[p] = fs.existsSync(p); } catch { out.sockets[p] = 'err'; }
-  }
-
-  // Test a real WRITE via the raw mariadb driver (read works; does write?).
-  const tryConn = async (label: string, cfg: any) => {
-    const start = Date.now();
-    let conn: any;
-    try {
-      conn = await mariadb.createConnection({ ...cfg, connectTimeout: 8000 });
-      await conn.query('SELECT 1');
-      const readMs = Date.now() - start;
-      // write test
-      const w = Date.now();
-      const db = cfg.database;
-      await conn.query(`CREATE TABLE IF NOT EXISTS \`${db}\`.\`_wtest\` (x INT PRIMARY KEY)`);
-      await conn.query(`INSERT INTO \`${db}\`.\`_wtest\` (x) VALUES (1) ON DUPLICATE KEY UPDATE x=1`);
-      const got = await conn.query(`SELECT x FROM \`${db}\`.\`_wtest\` WHERE x=1`);
-      await conn.query(`DROP TABLE \`${db}\`.\`_wtest\``);
-      out[label] = `read OK ${readMs}ms; WRITE OK ${Date.now() - w}ms (got ${JSON.stringify(got?.[0]?.x)})`;
-    } catch (e: any) {
-      out[label] = `FAIL ${Date.now() - start}ms: ${e.code || ''} ${e.message}`.slice(0, 160);
-    } finally {
-      try { if (conn) await conn.end(); } catch {}
-    }
-  };
-
-  // race each test against a hard 18s cap so a hang doesn't block the response
-  const cap = (label: string, p: Promise<any>) =>
-    Promise.race([p, new Promise(r => setTimeout(() => { if (!out[label]) out[label] = 'TIMEOUT-18s (hung)'; r(null); }, 18000))]);
-  await cap('tcp_127', tryConn('tcp_127', { ...base, host: '127.0.0.1', port: 3306 }));
-  for (const p of Object.keys(out.sockets)) {
-    if (out.sockets[p] === true) await cap('socket_' + p, tryConn('socket_' + p, { ...base, socketPath: p }));
-  }
-  res.json(out);
-});
-
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
 // Ping — responds instantly (UptimeRobot + client polling).
-// warmupNeon() manages DB state; don't fire extra queries here.
-// Ping — responds instantly. Also keeps Neon warm: at most once every 60s it
-// fires a background SELECT 1 (non-blocking) so an external uptime monitor
-// pointed here actually prevents cold starts, and dbReady reflects reality.
-let lastPingTouch = 0;
 app.get("/api/ping", (_req, res) => {
-  const t = Date.now();
-  if (prisma && !warmingUp && t - lastPingTouch > 60000) {
-    lastPingTouch = t;
-    withDbTimeout(prisma.$queryRaw`SELECT 1`, 9000)
-      .then(() => { dbReady = true; })
-      .catch(async () => { dbReady = false; await reinitPrisma(); warmupNeon(); });
-  }
-  res.json({ ok: true, dbReady });
-});
-
-app.get("/api/debug/env", (req, res) => {
-  res.json({
-    DATABASE_URL: process.env.DATABASE_URL ? `set (${process.env.DATABASE_URL.slice(0, 40)}...)` : 'NOT SET',
-    NODE_ENV: process.env.NODE_ENV,
-    PORT: process.env.PORT,
-  });
+  res.json({ ok: true });
 });
 
 app.post("/api/auth/register", async (req, res) => {
@@ -518,62 +146,34 @@ app.post("/api/auth/register", async (req, res) => {
   }
 });
 
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-// Race a DB promise against a timeout so a cold Neon query can't hang the
-// request for 90s. On timeout we kick off warmup and return a fast 503 the
-// frontend retries — far better UX than a hung connection.
-class DbWarmingError extends Error { constructor() { super('db-warming'); } }
-function withDbTimeout<T>(p: Promise<T>, ms = 15000): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, rej) => setTimeout(() => rej(new DbWarmingError()), ms)),
-  ]);
-}
-
 app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
   try {
-    if (!prisma) { warmupNeon(); return res.status(503).json({ error: "Server waking up, please retry", warming: true }); }
-    const user = await withDbTimeout(prisma.user.findUnique({ where: { email: email.toLowerCase() } }));
+    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
     if (!user) return res.status(400).json({ error: "Invalid credentials" });
     const validPassword = await bcrypt.compare(password, (user as any).passwordHash);
     if (!validPassword) return res.status(400).json({ error: "Invalid credentials" });
     const token = jwt.sign({ uid: user.uid, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
     let clientProfile = null;
     if ((user as any).role === 'client') {
-      clientProfile = await withDbTimeout(prisma.client.findUnique({ where: { uid: (user as any).uid } }));
+      clientProfile = await prisma.client.findUnique({ where: { uid: (user as any).uid } });
     }
-    dbReady = true;
     return res.json({ token, user, clientProfile });
   } catch (error: any) {
-    const warming = error instanceof DbWarmingError || error.message?.includes('timeout') || error.code === '57014';
-    if (warming) {
-      await reinitPrisma(); // rebuild the (likely-stale) client so the retry succeeds
-      warmupNeon();
-      return res.status(503).json({ error: "Server waking up, please retry in a few seconds", warming: true });
-    }
     return res.status(500).json({ error: error.message });
   }
 });
 
 app.get("/api/auth/me", authenticateToken, async (req: any, res: any) => {
   try {
-    const user = await withDbTimeout(prisma.user.findUnique({ where: { uid: req.user.uid } }));
+    const user = await prisma.user.findUnique({ where: { uid: req.user.uid } });
     if (!user) return res.status(404).json({ error: "User not found" });
     let clientProfile = null;
     if (user.role === 'client') {
-      clientProfile = await withDbTimeout(prisma.client.findUnique({ where: { uid: user.uid } }));
+      clientProfile = await prisma.client.findUnique({ where: { uid: user.uid } });
     }
-    dbReady = true;
     res.json({ user, clientProfile });
   } catch (error: any) {
-    const warming = error instanceof DbWarmingError || error.message?.includes('timeout') || error.code === '57014';
-    if (warming) {
-      await reinitPrisma();
-      warmupNeon();
-      return res.status(503).json({ error: "Server waking up, please retry", warming: true });
-    }
     res.status(500).json({ error: error.message });
   }
 });
@@ -855,28 +455,13 @@ if (!process.env.VERCEL) {
     const PORT = parseInt(process.env.PORT || '3000', 10);
     const distPath = path.join(process.cwd(), "dist");
 
-    try {
-      const dbUrl = process.env.DATABASE_URL;
-      console.log('[db] DATABASE_URL:', dbUrl ? dbUrl.slice(0, 30) + '...' : 'NOT FOUND');
-      if (!dbUrl) throw new Error('DATABASE_URL not set');
-
-      // Neon (Postgres) over HTTPS via PrismaNeonHTTP — the only transport that
-      // works from Hostinger (TCP/WebSocket are blocked). Reads AND writes work.
-      // The shared client can degrade after idle (queries start hanging); when
-      // that's detected we rebuild it (a fresh client always works).
-      await reinitPrisma();
-      warmupNeon();
-
-      // Ensure admin accounts exist. Runs from the live server (which can always
-      // reach localhost MySQL) so admins are guaranteed even if the build-phase
-      // seed couldn't connect. Safe to run every boot (upsert).
+    if (!process.env.DATABASE_URL) {
+      console.error('[db] DATABASE_URL not set');
+    } else {
+      // Ensure admin accounts exist. Safe to run every boot (upsert).
       ensureAdmins().catch(e => console.error('[db] ensureAdmins failed:', e.message));
-    } catch (e: any) {
-      dbInitError = e.message;
-      console.error('[db] init failed, server still starting:', e.message);
     }
 
-    // Start listening regardless of DB state.
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
       // Never cache index.html so a new deploy's frontend (hashed assets) is
@@ -886,15 +471,6 @@ if (!process.env.VERCEL) {
     });
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`✅ Server running on http://localhost:${PORT}`);
-
-      // Keepalive every 2 min (under Neon's 5-min sleep) to keep both the
-      // Hostinger Node process and the Neon compute warm. On failure, kick a
-      // full warmup so the next request isn't cold.
-      setInterval(async () => {
-        if (!prisma || warmingUp) return;
-        try { await withDbTimeout(prisma.$queryRaw`SELECT 1`, 10000); dbReady = true; }
-        catch { dbReady = false; await reinitPrisma(); warmupNeon(); }
-      }, 90 * 1000);
     });
   })();
 }

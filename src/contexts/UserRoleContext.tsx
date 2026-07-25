@@ -89,7 +89,7 @@ export function UserRoleProvider({ children }: { children: React.ReactNode }) {
 
     try {
       let res: Response | null = null;
-      // Up to 3 attempts; server may be waking from cold start.
+      // Up to 3 attempts to ride out transient network hiccups.
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           res = await fetchMe(15000);

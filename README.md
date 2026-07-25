@@ -20,11 +20,11 @@ A full-stack recruitment CRM for managing candidates, counselors, and job applic
 |---|---|
 | Frontend | React 19, TypeScript, Vite 6, Tailwind CSS 4 |
 | Backend | Express.js (TypeScript), compiled via esbuild |
-| Database | PostgreSQL via [Neon](https://neon.tech) (serverless) |
+| Database | PostgreSQL, self-hosted on the same VPS (local, always-on — no serverless compute-hour limits) |
 | ORM | Prisma 6 |
 | Auth | JWT (7-day expiry) + bcrypt |
 | AI | Anthropic Claude (job description parsing) |
-| Hosting | Hostinger Node.js Web App |
+| Hosting | Hostinger KVM VPS (Node app + Postgres via PM2 + Nginx) |
 | Font | IBM Plex Sans |
 
 ---
@@ -97,7 +97,7 @@ cp .env.example .env
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | Yes | Neon PostgreSQL connection string |
+| `DATABASE_URL` | Yes | PostgreSQL connection string, e.g. `postgresql://karya_user:PASSWORD@localhost:5432/karya?schema=public` (Postgres runs on the same VPS as the app) |
 | `JWT_SECRET` | Yes | Any long random string for signing tokens |
 | `ANTHROPIC_API_KEY` | Yes | Claude API key for AI job parsing |
 | `NODE_ENV` | Yes | Set to `production` on server |
@@ -113,7 +113,7 @@ cp .env.example .env
 ### Prerequisites
 
 - Node.js 20+
-- A [Neon](https://neon.tech) database (free tier works fine)
+- A local PostgreSQL instance (matches production, which runs Postgres on the same VPS as the app)
 
 ### Setup
 
@@ -124,7 +124,7 @@ npm install
 # 2. Copy environment file and fill in your DATABASE_URL + JWT_SECRET
 cp .env.example .env
 
-# 3. Push schema to your Neon database
+# 3. Push schema to your database
 npx prisma db push
 
 # 4. Seed admin accounts
@@ -150,31 +150,28 @@ npm run dev
 
 ---
 
-## Deploying to Hostinger
+## Deploying to Hostinger (KVM VPS)
 
-The app is hosted on **Hostinger Node.js Web App** at `www.karya.services`.
+The app and its PostgreSQL database both run on a Hostinger KVM VPS at `www.karya.services` — no external database service, no compute-hour limits. The app is managed by **PM2** and served through **Nginx** (TLS via Let's Encrypt); Postgres listens on `localhost` only.
+
+- First-time VPS setup: [`deploy/VPS_SETUP.md`](deploy/VPS_SETUP.md)
+- One-time data migration from the old Neon database: [`deploy/MIGRATE_DATA.md`](deploy/MIGRATE_DATA.md)
+- Nightly backup script: [`deploy/backup.sh`](deploy/backup.sh)
 
 ### How deployment works
 
-When you push to `main` and Hostinger redeploys:
+On the VPS:
 
-1. `npm install` — installs all dependencies
-2. `postinstall` auto-runs — generates Prisma client + builds React + compiles server
-3. `node server.js` — starts the compiled Express server
+1. `git pull` — pulls the latest `main`
+2. `npm install` — installs dependencies; `postinstall` auto-runs `prisma generate` + builds React + compiles the server
+3. `pm2 restart karya` — restarts the running process with the new build
 
-### Manual redeploy steps
+### Environment variables
 
-1. Push your changes to GitHub `main` branch
-2. Go to **Hostinger hPanel → Deployments → Redeploy**
-3. Wait ~2 minutes for the build to complete
-4. Check **Runtime logs** for any errors
-
-### Environment variables on Hostinger
-
-Set these in **hPanel → Environment variables**:
+Set in the VPS's `.env` file (not committed — see `.env.example`):
 
 ```
-DATABASE_URL      = postgresql://...neon.tech/...
+DATABASE_URL      = postgresql://karya_user:PASSWORD@localhost:5432/karya?schema=public
 JWT_SECRET        = your-secret-here
 ANTHROPIC_API_KEY = sk-ant-...
 NODE_ENV          = production
@@ -293,9 +290,6 @@ Then refresh and log in again.
 npx prisma db push
 npx prisma generate
 ```
-
-**Slow first load**
-Neon's free tier sleeps after 5 minutes of inactivity. The first request after a sleep takes ~5–10 seconds to wake the database. Upgrade to Neon Pro to keep it always-on.
 
 **API returning HTML instead of JSON**
 Make sure `NODE_ENV=production` is set. In development, use `npm run dev:server` alongside `npm run dev`.
