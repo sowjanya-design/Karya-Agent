@@ -24,7 +24,7 @@ A full-stack recruitment CRM for managing candidates, counselors, and job applic
 | ORM | Prisma 6 |
 | Auth | JWT (7-day expiry) + bcrypt |
 | AI | Anthropic Claude (job description parsing) |
-| Hosting | Hostinger KVM VPS (Node app + Postgres via PM2 + Nginx) |
+| Hosting | Hostinger KVM VPS — CyberPanel/OpenLiteSpeed as reverse proxy + SSL, app runs under PM2 |
 | Font | IBM Plex Sans |
 
 ---
@@ -97,8 +97,9 @@ cp .env.example .env
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection string, e.g. `postgresql://karya_user:PASSWORD@localhost:5432/karya?schema=public` (Postgres runs on the same VPS as the app) |
+| `DATABASE_URL` | Yes | PostgreSQL connection string, e.g. `postgresql://karya_user:PASSWORD@localhost:5432/karya_db?schema=public` (Postgres runs on the same VPS as the app) |
 | `JWT_SECRET` | Yes | Any long random string for signing tokens |
+| `SETUP_SECRET` | Yes | Random string gating one-off admin endpoints (e.g. `/api/setup/seed-admin`) |
 | `ANTHROPIC_API_KEY` | Yes | Claude API key for AI job parsing |
 | `NODE_ENV` | Yes | Set to `production` on server |
 | `PUPPETEER_SKIP_DOWNLOAD` | Yes | Set to `true` (Puppeteer not used in prod) |
@@ -152,44 +153,47 @@ npm run dev
 
 ## Deploying to Hostinger (KVM VPS)
 
-The app and its PostgreSQL database both run on a Hostinger KVM VPS at `www.karya.services` — no external database service, no compute-hour limits. The app is managed by **PM2** and served through **Nginx** (TLS via Let's Encrypt); Postgres listens on `localhost` only.
+The app and its PostgreSQL database both run on a Hostinger KVM VPS (`srv1743697.hstgr.cloud`, IP `187.127.179.44`) at `www.karya.services` — no external database service, no compute-hour limits. CyberPanel/OpenLiteSpeed handles the reverse proxy and SSL (Let's Encrypt, auto-renewing via certbot); the app itself runs under **PM2** (auto-restarts on crash and on VPS reboot); Postgres listens on `localhost` only.
 
-- First-time VPS setup: [`deploy/VPS_SETUP.md`](deploy/VPS_SETUP.md)
+Live app code lives at `/home/karya.services/public_html/Karya-Agent` on the VPS, currently checked out on the **`vps-postgres-migration`** branch (not `main` — see note below).
+
+- First-time VPS setup reference: [`deploy/VPS_SETUP.md`](deploy/VPS_SETUP.md)
 - One-time data migration from the old Neon database: [`deploy/MIGRATE_DATA.md`](deploy/MIGRATE_DATA.md)
-- Nightly backup script: [`deploy/backup.sh`](deploy/backup.sh)
+- Nightly backup script: [`deploy/backup.sh`](deploy/backup.sh) (installed as a cron job on the VPS, 2:30 AM daily, 14-day retention)
 
-### How deployment works
+### ⚠️ Deployment is currently manual — there is no auto-deploy on the VPS
 
-On the VPS:
+Pushing to GitHub does **not** update the live site by itself. To deploy a change, SSH into the VPS and run:
 
-1. `git pull` — pulls the latest `main`
-2. `npm install` — installs dependencies; `postinstall` auto-runs `prisma generate` + builds React + compiles the server
-3. `pm2 restart karya` — restarts the running process with the new build
+```bash
+cd /home/karya.services/public_html/Karya-Agent
+git pull
+npm install
+npx prisma db push   # only needed if schema.prisma changed
+pm2 restart karya
+```
+
+**Important — about the `main` branch:** Hostinger's old "Websites" hosting product (a separate, no-longer-used hosting plan, not the VPS) is still connected to GitHub and still auto-deploys whenever `main` is pushed to. That old hosting is Neon-based and not receiving any traffic (DNS points at the VPS now), so this is harmless — but pushing to `main` will silently rebuild that dead copy in the background. The VPS deployment tracks the `vps-postgres-migration` branch, not `main`. Merge `vps-postgres-migration` into `main` and/or cancel that old hosting plan once you're fully confident in the VPS setup, to avoid the confusion of two different branches meaning two different things.
 
 ### Environment variables
 
 Set in the VPS's `.env` file (not committed — see `.env.example`):
 
 ```
-DATABASE_URL      = postgresql://karya_user:PASSWORD@localhost:5432/karya?schema=public
+DATABASE_URL      = postgresql://karya_user:PASSWORD@localhost:5432/karya_db?schema=public
 JWT_SECRET        = your-secret-here
+SETUP_SECRET      = your-secret-here
 ANTHROPIC_API_KEY = sk-ant-...
 NODE_ENV          = production
+PORT              = 3000
 PUPPETEER_SKIP_DOWNLOAD = true
 ```
 
 ---
 
-## Deploying to Vercel (Alternative)
+## Deploying to Vercel (currently unused)
 
-The `api/index.ts` file wraps the Express app as a Vercel serverless function.
-
-```bash
-# Deploy via Vercel CLI
-npx vercel --prod
-```
-
-Or connect your GitHub repo in the Vercel dashboard. The `vercel.json` config handles routing.
+The `api/index.ts` / `vercel.json` files still exist and would wrap the Express app as a Vercel serverless function, but this is **not** how the app is deployed today — the live site runs on the Hostinger VPS described above. Kept only in case a serverless deployment is wanted again in the future.
 
 ---
 
